@@ -121,7 +121,9 @@ _theframe.contentWindow.location.href = _theframe.src;
 </nav>
 </header>
 <div role="main" style="padding-left: 0px; padding-right: 0px;">
-<iframe id="eodmsIframe" src="/wes/Client/?entryPoint=2pane&b=false&bct=false&locale=en"  title="Earth Observation Data Management System. All functionality of this application operates within this iframe."  width="100%" height="650" style="border:0;"></iframe>
+<object id="eodmsIframe" type="text/html" data="/wes/Client/?entryPoint=2pane&b=false&bct=false&locale=en" width="100%" height="650" style="border:0;">
+  <object id="error" type="text/html" data="/errors/error.html" width="100%" height="650" style="border:0;"></object>
+</object>
 </div>
 <footer id="wb-info">
 <div class="landscape">
