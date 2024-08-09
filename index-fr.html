@@ -157,26 +157,36 @@ _theframe.contentWindow.location.href = _theframe.src;
 <script src="/wet-boew/js/wet-boew.min.js"></script>
 <script src="/GCWeb/js/theme.min.js"></script>
 <script>
-$(document).ready(function(){
-  var height = $(window).height();
-  $("#eodmsIframe").css('height', height-210);
-  $("#btn-fs-on").click(function(){
-    $("#wb-bnr-fs").removeClass("hidden");
-    $("#wb-bnr").addClass("hidden");
-    $("#wb-bc").addClass("hidden");
-    $("#wb-info").addClass("hidden");
-    $("#gcweb-menu").addClass("hidden");
-    $("#eodmsIframe").height($(window).height()-46);
+  $(document).ready(function() {
+      function toggleVisibility(showFullScreen) {
+          if (showFullScreen) {
+              $("#wb-bnr-fs").removeClass("hidden");
+              $("#wb-bnr").addClass("hidden");
+              $("#wb-bc").addClass("hidden");
+              $("#wb-info").addClass("hidden");
+              $("#gcweb-menu").addClass("hidden");
+              $("#eodmsIframe").height($(window).height() - 46);
+          } else {
+              $("#wb-bnr-fs").addClass("hidden");
+              $("#wb-bnr").removeClass("hidden");
+              $("#wb-bc").removeClass("hidden");
+              $("#wb-info").removeClass("hidden");
+              $("#gcweb-menu").removeClass("hidden");
+              $("#eodmsIframe").height($(window).height() - 210);
+          }
+      }
+  
+      // Initial setup
+      toggleVisibility(true);
+  
+      $("#btn-fs-on").click(function() {
+          toggleVisibility(true);
+      });
+  
+      $("#btn-fs-off").click(function() {
+          toggleVisibility(false);
+      });
   });
-  $("#btn-fs-off").click(function(){
-    $("#wb-bnr-fs").addClass("hidden");
-    $("#wb-bnr").removeClass("hidden");
-    $("#wb-bc").removeClass("hidden");
-    $("#wb-info").removeClass("hidden");
-    $("#gcweb-menu").removeClass("hidden");
-    $("#eodmsIframe").height($(window).height()-210);
-  });
-});
-</script>
+  </script>
 </body>
 </html>
