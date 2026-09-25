@@ -13,7 +13,7 @@ import { useOrderPolling } from './hooks/useOrderPolling';
 export default function App() {
   // NEW: Read the default URL from the environment, with a hardcoded fallback
   const fallbackHost = 'https://eodms-sgdot.nrcan-rncan.gc.ca';
-  const devMode = window.location.href.includes(':5174/');
+  const devMode = window.location.href.includes(':5173/') || window.location.href.includes(':5174/');
   const initialEndpoint = import.meta.env.VITE_DEFAULT_STAC_URL || (devMode ? fallbackHost : '') + '/search';
   const authEndpoint = import.meta.env.VITE_DEFAULT_AUTH_URL || (devMode ? fallbackHost : '') + '/aaa/v1/login';
   const refreshEndpoint = import.meta.env.VITE_DEFAULT_REFRESH_URL || (devMode ? fallbackHost : '') + '/aaa/v1/refresh';
