@@ -1,0 +1,8 @@
+FROM ubuntu:26.04 
+
+EXPOSE 5173
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm curl unzip sudo vim-tiny
+WORKDIR /site
+RUN npm install
+ENTRYPOINT ["npm"]
+CMD ["run", "dev"]
