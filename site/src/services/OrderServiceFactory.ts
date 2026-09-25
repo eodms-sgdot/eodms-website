@@ -14,7 +14,10 @@ export function createOrderServiceByUrl(
   stacUrl: string,
 ): OrderService | null {
   try {
-    const parsedUrl = new URL(stacUrl);
+    const parsedUrl = new URL(
+      /^https?:\/\//i.test(stacUrl) ? stacUrl : 
+      `${window.location.protocol}//${window.location.hostname}${window.location.port && window.location.port !== '80' ? `:${window.location.port}` : ''}${stacUrl}`
+    );
     const match = SERVICE_REGISTRY.find((entry) => entry.condition(parsedUrl));
 
     if (match) {
