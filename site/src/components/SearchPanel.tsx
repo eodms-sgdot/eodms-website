@@ -64,7 +64,19 @@ export default function SearchPanel({
   const [collections, setCollections] = useState<STACCollection[]>([]);
   const [loading, setLoading] = useState(false);
   const [appliedFiltersCount, setAppliedFiltersCount] = useState<number>(0);
-  const { authToken, setIsAuthOpen, filters, setFilters, t } = useContext(AppContext)!; 
+  const {
+    authToken,
+    setUsername,
+    setAuthToken,
+    setAuthExpiry,
+    setRefreshToken,
+    setRefreshExpiry,
+    setIsAuthOpen,
+    setAuthErrorMessage,
+    filters,
+    setFilters,
+    t,
+  } = useContext(AppContext)!;
   const [filterButtonEl, setFilterButtonEl] = useState<HTMLButtonElement | null>(null);
 
   const isMobile = useIsMobile();
@@ -103,6 +115,15 @@ export default function SearchPanel({
         setCollections(collections);
       } catch (error: unknown) {
         if (axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 401)) {
+          // This can happen after a page refresh when a stale auth token is still present
+          // in localStorage. Clearing the auth session lets the user sign back in without
+          // leaving the collections list permanently blank.
+          setUsername(null);
+          setAuthToken(null);
+          setAuthExpiry(null);
+          setRefreshToken(null);
+          setRefreshExpiry(null);
+          setAuthErrorMessage('errorCredentialsExpired');
           setIsAuthOpen(true);
         }
       } finally {
@@ -211,15 +232,17 @@ export default function SearchPanel({
         </Box>
 
         <Tooltip title={t("filtersHover")}>
-          <Button
-            onClick={(e) => setFilterButtonEl(e.currentTarget)}
-            sx={{ minWidth: "40px", p: 0, alignSelf: 'center' }}
-            disabled={selectedCollections.length !== 1}
-          >
-            <Badge color="warning" badgeContent={appliedFiltersCount}>
-              {<FilterIcon sx={{color: (selectedCollections.length === 1 ? "white" : "grey")}}/>}
-            </Badge>
-          </Button>
+          <span>
+            <Button
+              onClick={(e) => setFilterButtonEl(e.currentTarget)}
+              sx={{ minWidth: "40px", p: 0, alignSelf: 'center' }}
+              disabled={selectedCollections.length !== 1}
+            >
+              <Badge color="warning" badgeContent={appliedFiltersCount}>
+                {<FilterIcon sx={{color: (selectedCollections.length === 1 ? "white" : "grey")}}/>}
+              </Badge>
+            </Button>
+          </span>
         </Tooltip>
       </Box>
 
@@ -253,9 +276,8 @@ export default function SearchPanel({
         >
           <FormGroup>
             {collections.map((c) => (
-              <Tooltip title={c.description || c.title || c.id}>
+              <Tooltip key={c.id} title={c.description || c.title || c.id}>
                 <FormControlLabel
-                  key={c.id}
                   control={
                     supportsSearch ?
                       <Checkbox

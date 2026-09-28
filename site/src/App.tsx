@@ -9,6 +9,7 @@ import type { FilterValue } from './types';
 import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
 import { useOrderPolling } from './hooks/useOrderPolling';
+import { isRefreshRequired, isRefreshTokenExpired } from './services/AAAService';
 
 export default function App() {
   const initialEndpoint = import.meta.env.VITE_DEFAULT_STAC_URL || '/search';
@@ -60,6 +61,20 @@ export default function App() {
     (authToken ? authToken : ''),
     stacEndpoint
   );
+
+  useEffect(() => {
+    const hasExpiredAccessToken = Boolean(authToken && (!authExpiry || isRefreshRequired(authExpiry)));
+    const hasExpiredRefreshToken = Boolean(refreshToken && (!refreshExpiry || isRefreshTokenExpired(refreshExpiry)));
+
+    if (hasExpiredAccessToken || hasExpiredRefreshToken) {
+      setUsername(null);
+      setAuthToken(null);
+      setAuthExpiry(null);
+      setRefreshToken(null);
+      setRefreshExpiry(null);
+      setAuthErrorMessage(null);
+    }
+  }, [authToken, authExpiry, refreshToken, refreshExpiry, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setUsername, setAuthErrorMessage]);
 
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(language, key);
 

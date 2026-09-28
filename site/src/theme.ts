@@ -29,6 +29,11 @@ export const lightMode = createTheme({
         paper: { backgroundColor: "#f8f9fa", borderRight: "1px solid #dee2e6" },
       },
     },
+    MuiTooltip: {
+      defaultProps: {
+        disableInteractive: true,
+      },
+    },
   },
 });
 
@@ -56,6 +61,11 @@ export const darkMode = createTheme({
           backgroundColor: "#000000"
         }
       }
+    },
+    MuiTooltip: {
+      defaultProps: {
+        disableInteractive: true,
+      },
     },
   },
 });
