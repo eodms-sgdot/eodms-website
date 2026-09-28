@@ -2,6 +2,35 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Local Development
+
+Run the AAA proxy in one terminal:
+
+```cmd
+cd site\server
+npm install
+npm run start
+```
+
+Run the frontend in a second terminal:
+
+```cmd
+cd site
+npm install
+npm run dev
+```
+
+Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS STAC
+service. Production builds retain those relative paths; the production host is
+responsible for serving them.
+
+Build the frontend with:
+
+```cmd
+cd site
+npm run build
+```
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

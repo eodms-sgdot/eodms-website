@@ -4,18 +4,16 @@
  * For testing only, AAA service is having difficulty with CORS issues. These methods only serve as a proxy and do no processing.
  */
 const axios = require('axios')
-const cors = require('cors')
 const express = require('express')
 
 const app = express()
 
-app.use(cors())
 app.use(express.json())
 
 /*
- * POST - /login - Redirects a login POST request to the AAA service.
+ * POST - /aaa/v1/login - Redirects a login POST request to the AAA service.
  */
-app.post('/login', (req, res) => {
+app.post('/aaa/v1/login', (req, res) => {
 
     // post to AAA endpoint
     axios.post(
@@ -31,9 +29,9 @@ app.post('/login', (req, res) => {
 })
 
 /*
- * GET - /refresh - Redirects a refresh GET request to the AAA service.
+ * GET - /aaa/v1/refresh - Redirects a refresh GET request to the AAA service.
  */
-app.get('/refresh', (req, res) => {
+app.get('/aaa/v1/refresh', (req, res) => {
 
     // send to AAA endpoint
     axios.get(
