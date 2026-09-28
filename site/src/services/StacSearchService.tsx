@@ -2,7 +2,7 @@ import axios from "axios";
 import type { STACItem } from "../types";
 
 export interface StacSearchParams {
-  bbox: [number, number, number, number];
+  bbox?: [number, number, number, number];
   collections: string[];
   limit: number;
   datetime?: string;
@@ -84,7 +84,9 @@ export class StacSearchService {
   private buildSearchUrl(params: StacSearchParams): string {
     const queryParams = new URLSearchParams();
     queryParams.append("collections", params.collections.join(","));
-    queryParams.append("bbox", params.bbox.join(","));
+    if (params.bbox) {
+      queryParams.append("bbox", params.bbox.join(","));
+    }
     queryParams.append("limit", params.limit.toString());
 
     if (params.datetime) {
@@ -108,7 +110,9 @@ export class StacSearchService {
    */
   private buildItemsUrl(params: StacSearchParams): string {
     const queryParams = new URLSearchParams();
-    queryParams.append("bbox", params.bbox.join(","));
+    if (params.bbox) {
+      queryParams.append("bbox", params.bbox.join(","));
+    }
     queryParams.append("limit", params.limit.toString());
 
     if (params.datetime) {

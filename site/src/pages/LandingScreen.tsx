@@ -287,31 +287,12 @@ export default function LandingScreen() {
   };
 
   /**
-   * Executes STAC API search using the previous AOI, which is loaded from local storage
-   *  @async
-   */
-  const searchWithCurrentAoi = async () => {
-    if(bbox) {
-      const bboxStrings = bbox.split(',');
-
-      if(bboxStrings.length === 4) {
-        const west = Number(bboxStrings[0]);
-        const south = Number(bboxStrings[1]);
-        const east = Number(bboxStrings[2]);
-        const north = Number(bboxStrings[3]);
-
-        handleAoiDrawn([west, south, east, north])
-      }
-    }
-  };
-
-  /**
-   * Executes STAC API search queries when the user draws an Area of Interest (AOI) on the map.
+   * Executes STAC API search queries, optionally within an Area of Interest (AOI).
    * Constructs the payload, applies temporal/spatial/queryables filters, and updates the search results state.
    * * @async
-   * @param {[number, number, number, number]} bbox - The bounding box of the drawn area [West, South, East, North].
+   * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
-  const handleAoiDrawn = async (bbox: [number, number, number, number]) => {
+  const handleSearch = async (searchBbox?: [number, number, number, number]) => {
     if (selectedCollections.length === 0) {
       setSearchError(t("errorSelectCollection"));
       return;
@@ -328,7 +309,7 @@ export default function LandingScreen() {
     });
 
     const params: StacSearchParams = {
-      bbox,
+      ...(searchBbox && { bbox: searchBbox }),
       collections: collectionIDs,
       limit: searchLimit,
       ...(selectedCollections.length <= 1 && {sortby}),
@@ -376,6 +357,15 @@ export default function LandingScreen() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const searchWithCurrentAoi = () => {
+    const currentBbox = bbox?.split(',').map(Number);
+    const searchBbox = currentBbox?.length === 4 && currentBbox.every(Number.isFinite)
+      ? currentBbox as [number, number, number, number]
+      : undefined;
+
+    handleSearch(searchBbox);
   };
 
   const [preferencesAnchorEl, setPreferencesAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -511,7 +501,7 @@ export default function LandingScreen() {
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleAoiDrawn} onLocationSelected={handleAoiDrawn} zoomBounds={zoomBounds} 
+            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={handleSearch} zoomBounds={zoomBounds} 
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               activeThumbnails={activeThumbnails} setBbox={setBbox}
             />

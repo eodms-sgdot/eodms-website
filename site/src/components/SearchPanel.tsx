@@ -9,6 +9,7 @@ import DatePicker from './datepicker/DatePicker';
 import { getCollections } from '../services/StacService';
 import { fields } from '../session';
 import { useIsMobile } from '../utils/RenderingUtils';
+import SearchIcon from '@mui/icons-material/Search';
 
 /**
  * Properties for the SearchPanel component.
@@ -44,7 +45,7 @@ export interface SearchPanelProps {
   sortby: string;
   /** State setter for the sort order */
   setSortby: (val: string) => void;
-  /** Callback to execute a search with the current AOI*/
+  /** Callback to execute a search */
   executeSearch: () => void;
 }
 
@@ -280,18 +281,14 @@ export default function SearchPanel({
       )}
 
       <Divider />
-      <Typography 
-        variant="caption" 
-        sx={{ 
-          fontStyle: "italic", 
-          minHeight: "5vh", 
-          mb: 2, 
-          p: 2,
-          ...(!isMobile && { fontSize: "medium" })
-        }}
+      <Button
+        variant="contained"
+        startIcon={<SearchIcon />}
+        onClick={executeSearch}
+        sx={{ m: 2 }}
       >
-        {t("drawAoi")}
-      </Typography>
+        {t("search")}
+      </Button>
 
       <Box sx={{ mt: "auto", display: "flex", flexDirection: "column", gap: 2, p:2 }}>
         <Tooltip title={t('temporalExtent')}>
