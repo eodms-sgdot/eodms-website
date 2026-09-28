@@ -248,6 +248,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
               bottomleft={new LatLng(coords[1][0], coords[1][1])}
               topleft={new LatLng(coords[0][0], coords[0][1])}
               topright={new LatLng(coords[3][0], coords[3][1])}
+              options={{ zIndex: 1000, opacity: 0.9 }}
             />
           );
         }
