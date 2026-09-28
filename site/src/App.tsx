@@ -12,8 +12,12 @@ import { useOrderPolling } from './hooks/useOrderPolling';
 
 export default function App() {
   const initialEndpoint = import.meta.env.VITE_DEFAULT_STAC_URL || '/search';
-  const authEndpoint = import.meta.env.VITE_DEFAULT_AUTH_URL || '/aaa/v1/login';
-  const refreshEndpoint = import.meta.env.VITE_DEFAULT_REFRESH_URL || '/aaa/v1/refresh';
+  const authEndpoint = import.meta.env.DEV
+    ? '/aaa/v1/login'
+    : import.meta.env.VITE_DEFAULT_AUTH_URL || '/aaa/v1/login';
+  const refreshEndpoint = import.meta.env.DEV
+    ? '/aaa/v1/refresh'
+    : import.meta.env.VITE_DEFAULT_REFRESH_URL || '/aaa/v1/refresh';
 
   const [searchLimit, setSearchLimit] = useState<number>(() => localStorage.getItem(fields.searchLimit) ? Number(localStorage.getItem(fields.searchLimit)) : 50);
 

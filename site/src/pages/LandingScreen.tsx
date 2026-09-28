@@ -56,6 +56,7 @@ export default function LandingScreen() {
   const [sortby, setSortby] = useState<string>('-datetime');
 
   const isMobile = useIsMobile();
+  const firstName = username?.trim().split(/\s+/)[0];
 
   /**
    * Calculates the appropriate width for the Search & Result panels
@@ -400,42 +401,18 @@ export default function LandingScreen() {
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100%', flexDirection: 'column', overflow: 'hidden' }}>
-      
-      <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'left', width: '100%',
-            backgroundColor: displayMode === 'dark' ? "#121212" : "#FFFFFF"
-        }}>
-
-        <Typography variant="h6" color="primary" noWrap>
-          {import.meta.env.VITE_APP_TITLE || t('appTitle')}
-        </Typography>
-
-        {/* empty to make widgets below align right */}
-        <Box sx={{width: '20%', alignItems: 'center'}}></Box>
-        
-        <Box sx={{ display: 'flex', alignItems: 'right'}}>
-          {username ? (
-              <Typography variant="h6" color="primary" noWrap>
-                    {t('hello')+username}
-              </Typography>
-           ) : ''}
-        </Box>
-      </Box>
       <AppBar position="static" color="default" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1}}>
         <Toolbar variant="dense">
           <IconButton edge="start" onClick={() => setLeftOpen(!leftOpen)}><MenuIcon /></IconButton>
+          <Typography variant="h6" color="primary" noWrap sx={{ ml: 1, flexShrink: 0 }}>
+            {t('appTitle')}
+          </Typography>
 
           {/* empty to make widgets below align right */}
-          <Box sx={{width: '100%', alignItems: 'center'}}></Box>
+          <Box sx={{ flexGrow: 1 }}></Box>
           
           <Box sx={{ display: 'flex', alignItems: 'right'}}>
-
-            {!username ? (
-            <Typography variant="h6" color="primary"  noWrap sx={{mr:1}}>
-              {t('login')+':'}
-            </Typography>
-            ) : ''}
-            
-            <Tooltip title={authToken ? t('authenticated') : t('provideAuth')}>
+            <Tooltip title={authToken && firstName ? `${t('hello')}${firstName}` : t('provideAuth')}>
               <Button ref={setAuthButtonEl} variant={authToken ? "contained" : "outlined"} color={authToken ? "success" : "primary"} onClick={() => setIsAuthOpen(!isAuthOpen)} sx={{ minWidth: '40px'}}>
                 {authToken ? <LockOpenIcon /> : <LockIcon />}
               </Button>

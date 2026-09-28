@@ -3,7 +3,7 @@ export type Language = "en" | "fr";
 
 export const translations = {
   en: {
-    appTitle: "STAC Explorer",
+    appTitle: "EODMS",
     stacEndpoint: "STAC Endpoint",
     provideAuth: "Provide Credentials",
     authenticated: "Authenticated",
@@ -125,7 +125,7 @@ export const translations = {
     pbAbbr: "PB",
   },
   fr: {
-    appTitle: "Explorateur STAC",
+    appTitle: "SGDOT",
     stacEndpoint: "Point de terminaison STAC",
     provideAuth: "Fournir les informations d'identification",
     authenticated: "Authentifié",
