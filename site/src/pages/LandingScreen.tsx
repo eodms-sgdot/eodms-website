@@ -22,6 +22,7 @@ import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import OrderPanel from '../components/OrderPanel';
 import PreferencesPanel from '../components/PreferencesPanel';
 import { useIsMobile } from '../utils/RenderingUtils';
+import type { ExplorerExperience } from '../experiences';
 
 const DRAWER_WIDTH = 320;
 
@@ -30,7 +31,11 @@ const DRAWER_WIDTH = 320;
  * Coordinates data flow between the Map, Search Panel, and Results Panel.
  * * @returns {JSX.Element} The rendered Landing Screen layout.
  */
-export default function LandingScreen() {
+interface LandingScreenProps {
+  experience: ExplorerExperience;
+}
+
+export default function LandingScreen({ experience }: LandingScreenProps) {
   const { stacEndpoint, refreshEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate, 
     username, authToken, refreshToken, authExpiry, refreshExpiry, setAuthToken, setRefreshToken, setAuthExpiry, setRefreshExpiry, isAuthOpen, setIsAuthOpen, 
     setUsername, setAuthErrorMessage, displayMode, bbox, setBbox, filters, t } = useContext(AppContext)!;
@@ -40,7 +45,11 @@ export default function LandingScreen() {
   const [rightOpen, setRightOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
-  const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>([]);
+  const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
+    experience.fixedCollectionId
+      ? [{ id: experience.fixedCollectionId, description: '', links: [] }]
+      : [],
+  );
   const [zoomBounds, setZoomBounds] = useState<[number, number, number, number] | null>(null);
 
   const [isSearching, setIsSearching] = useState(false);
@@ -293,7 +302,11 @@ export default function LandingScreen() {
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
   const handleSearch = async (searchBbox?: [number, number, number, number]) => {
-    if (selectedCollections.length === 0) {
+    const collectionIDs = experience.fixedCollectionId
+      ? [experience.fixedCollectionId]
+      : selectedCollections.map(collection => collection.id);
+
+    if (collectionIDs.length === 0) {
       setSearchError(t("errorSelectCollection"));
       return;
     }
@@ -302,11 +315,6 @@ export default function LandingScreen() {
     setSelectedFootprints({});
     setActiveThumbnails({});
     setFocusedItem(null);
-
-    const collectionIDs: string[] = [];
-    selectedCollections.map(c => {
-        collectionIDs.push(c.id)
-    });
 
     const params: StacSearchParams = {
       ...(searchBbox && { bbox: searchBbox }),
@@ -395,7 +403,7 @@ export default function LandingScreen() {
         <Toolbar variant="dense">
           <IconButton edge="start" onClick={() => setLeftOpen(!leftOpen)}><MenuIcon /></IconButton>
           <Typography variant="h6" color="primary" noWrap sx={{ ml: 1, flexShrink: 0 }}>
-            {t('appTitle')}
+            {t(experience.titleKey)}
           </Typography>
 
           {/* empty to make widgets below align right */}
@@ -459,7 +467,8 @@ export default function LandingScreen() {
         <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative' } }}>
             <SearchPanel 
-              stacEndpoint={stacEndpoint} selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
+              stacEndpoint={stacEndpoint} fixedCollectionId={experience.fixedCollectionId}
+              selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
               searchLimit={searchLimit} setSearchLimit={setSearchLimit} searchTemporal={searchTemporal} setSearchTemporal={setSearchTemporal}
               startDate={searchStartDate} setStartDate={setSearchStartDate} endDate={searchEndDate} setEndDate={setSearchEndDate} 
               supportsSearch={supportsSearch} supportsSorting={supportsSorting} sortby={sortby} setSortby={setSortby} executeSearch={searchWithCurrentAoi}

@@ -4,6 +4,9 @@ export type Language = "en" | "fr";
 export const translations = {
   en: {
     appTitle: "EODMS",
+    naplTitle: "Digital National Air Photo Library",
+    naplWelcomeTitle: "Canada from above",
+    naplWelcomeBody: "Discover Canada's historical aerial photography and search the National Air Photo Library by place and date.",
     stacEndpoint: "STAC Endpoint",
     provideAuth: "Provide Credentials",
     authenticated: "Authenticated",
@@ -127,6 +130,9 @@ export const translations = {
   },
   fr: {
     appTitle: "SGDOT",
+    naplTitle: "Photothèque nationale de l'air numérique",
+    naplWelcomeTitle: "Le Canada vu du ciel",
+    naplWelcomeBody: "Découvrez les photographies aériennes historiques du Canada et recherchez la Photothèque nationale de l'air par lieu et par date.",
     stacEndpoint: "Point de terminaison STAC",
     provideAuth: "Fournir les informations d'identification",
     authenticated: "Authentifié",

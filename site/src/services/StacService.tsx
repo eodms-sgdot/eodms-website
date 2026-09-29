@@ -26,6 +26,24 @@ export const getCollections = async (
   return sorted;
 };
 
+export const getCollection = async (
+  stacEndpoint: string,
+  collectionId: string,
+  authToken: string | null,
+): Promise<STACCollection> => {
+  const headers: Record<string, string> = authToken
+    ? { Authorization: `Bearer ${authToken}` }
+    : {};
+
+  headers["Accept"] = "application/json";
+
+  const response = await axios.get<STACCollection>(
+    `${stacEndpoint}/collections/${encodeURIComponent(collectionId)}`,
+    { headers, withCredentials: true },
+  );
+  return response.data;
+};
+
 /**
  * Fetches the available queryables for a collection from the active STAC endpoint.
  * @param collectionName

@@ -112,7 +112,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
             </FormControl>
 
             {searchTemporal === 'custom' && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 1.5, border: '1px solid #ddd', borderRadius: 1, bgcolor: 'white' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper' }}>
                     <TextField label={t('startDate')} type="datetime-local" size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={startDate} onChange={startChange} />
                     <TextField label={t('endDate')} type="datetime-local" size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={endDate} onChange={endChange} />
                 </Box>

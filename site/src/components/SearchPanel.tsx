@@ -6,10 +6,11 @@ import type { STACCollection } from '../types';
 import FilterIcon from '@mui/icons-material/FilterAlt';
 import FilterPanel from './filters/FilterPanel';
 import DatePicker from './datepicker/DatePicker';
-import { getCollections } from '../services/StacService';
+import { getCollection, getCollections } from '../services/StacService';
 import { fields } from '../session';
 import { useIsMobile } from '../utils/RenderingUtils';
 import SearchIcon from '@mui/icons-material/Search';
+import NaplWelcome from './NaplWelcome';
 
 /**
  * Properties for the SearchPanel component.
@@ -17,6 +18,8 @@ import SearchIcon from '@mui/icons-material/Search';
 export interface SearchPanelProps {
   /** The current URL of the STAC catalog API */
   stacEndpoint: string;
+  /** Collection ID enforced by a fixed-collection experience */
+  fixedCollectionId?: string;
   /** Array of collections currently selected by the user */
   selectedCollections: STACCollection[];
   /** State setter for updating the selected collections */
@@ -56,7 +59,7 @@ export interface SearchPanelProps {
  * @returns {JSX.Element} The rendered Search Panel drawer content.
  */
 export default function SearchPanel({ 
-  stacEndpoint, selectedCollections, setSelectedCollections,
+  stacEndpoint, fixedCollectionId, selectedCollections, setSelectedCollections,
   searchTemporal, setSearchTemporal, startDate, setStartDate, endDate, setEndDate, supportsSearch,
   supportsSorting, sortby, setSortby, executeSearch
 }: SearchPanelProps) {
@@ -89,7 +92,9 @@ export default function SearchPanel({
     let count = 0;
 
     if (filters) {
-      Object.keys(filters).forEach((collectionName) => {
+      Object.keys(filters)
+        .filter(collectionName => !fixedCollectionId || collectionName === fixedCollectionId)
+        .forEach((collectionName) => {
           filters[collectionName].forEach((filterValue) => {
               if(filterValue.operation && filterValue.value) {
                 count = count + 1;
@@ -100,7 +105,7 @@ export default function SearchPanel({
 
     setAppliedFiltersCount(count);
     return count;
-  }, [filters]);
+  }, [filters, fixedCollectionId]);
 
   useEffect(() => {
     /**
@@ -111,8 +116,14 @@ export default function SearchPanel({
     const fetchCollections = async () => {
       setLoading(true);
       try {
-        const collections = await(getCollections(stacEndpoint, authToken));
-        setCollections(collections);
+        if (fixedCollectionId) {
+          const collection = await getCollection(stacEndpoint, fixedCollectionId, authToken);
+          setCollections([collection]);
+          setSelectedCollections([collection]);
+        } else {
+          const collections = await getCollections(stacEndpoint, authToken);
+          setCollections(collections);
+        }
       } catch (error: unknown) {
         if (axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 401)) {
           // This can happen after a page refresh when a stale auth token is still present
@@ -131,7 +142,11 @@ export default function SearchPanel({
       }
     };
     fetchCollections();
-  }, [stacEndpoint, authToken, setIsAuthOpen]);
+  }, [
+    stacEndpoint, authToken, fixedCollectionId, setSelectedCollections,
+    setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry,
+    setAuthErrorMessage, setIsAuthOpen,
+  ]);
 
   /**
    * Recounts the number of applied filters whenever
@@ -149,6 +164,7 @@ export default function SearchPanel({
    * Set selected collections to match filters saved in session
    */
   useEffect(() => {
+    if (fixedCollectionId) return;
 
     if(localStorage.getItem(fields.filters)) { 
       setSelectedCollections([]);
@@ -163,7 +179,7 @@ export default function SearchPanel({
       });
     }
 
-  }, [collections, setCollections, setSelectedCollections]);
+  }, [collections, fixedCollectionId, setSelectedCollections]);
 
   /**
    * Function that clears the filters
@@ -205,7 +221,7 @@ export default function SearchPanel({
 
   return (
     <Box sx={{display: "flex", flexDirection: "column", height: "100%" }}>
-      <Box
+      {fixedCollectionId ? <NaplWelcome /> : <Box
         sx={{
           p: 2,
           display: "flex",
@@ -244,7 +260,25 @@ export default function SearchPanel({
             </Button>
           </span>
         </Tooltip>
-      </Box>
+      </Box>}
+
+      {fixedCollectionId && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2, pt: 1 }}>
+          <Tooltip title={t("filtersHover")}>
+            <span>
+              <Button
+                onClick={(e) => setFilterButtonEl(e.currentTarget)}
+                disabled={loading || selectedCollections.length !== 1}
+                sx={{ minWidth: 40 }}
+              >
+                <Badge color="warning" badgeContent={appliedFiltersCount}>
+                  <FilterIcon />
+                </Badge>
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
+      )}
 
       <Popover
         open={Boolean(filterButtonEl)}
@@ -265,7 +299,7 @@ export default function SearchPanel({
 
       {loading ? (
         <CircularProgress size={24} sx={{ my: 2, alignSelf: "center" }} />
-      ) : (
+      ) : !fixedCollectionId ? (
         <Box
           sx={{
             display: "flex",
@@ -300,7 +334,7 @@ export default function SearchPanel({
             ))}
           </FormGroup>
         </Box>
-      )}
+      ) : null}
 
       <Divider />
       <Button

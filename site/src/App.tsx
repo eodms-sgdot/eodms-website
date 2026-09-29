@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, MemoryRouter } from 'react-router-dom';
+import { Routes, Route, Navigate, BrowserRouter, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AppContext } from './AppContext';
 import { darkMode, lightMode, type DisplayMode } from './theme';
@@ -10,6 +10,20 @@ import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
 import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired } from './services/AAAService';
+import { eodmsExperience, naplExperience } from './experiences';
+
+function DocumentTitle({ language }: { language: Language }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const isNapl = location.pathname === '/napl';
+    document.title = isNapl
+      ? import.meta.env.VITE_NAPL_APP_TITLE || getTranslation(language, 'naplTitle')
+      : import.meta.env.VITE_APP_TITLE || getTranslation(language, 'appTitle');
+  }, [language, location.pathname]);
+
+  return null;
+}
 
 export default function App() {
   const initialEndpoint = import.meta.env.VITE_DEFAULT_STAC_URL || '/search';
@@ -92,11 +106,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    document.title = import.meta.env.VITE_APP_TITLE || t('appTitle');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]); 
-
   /**
    * Updates the user's saved session when any of the values in this effect are changed.
    */
@@ -173,12 +182,14 @@ export default function App() {
     }}>
       <ThemeProvider theme={displayMode === "light" ? lightMode : darkMode}>
         <CssBaseline />
-        <MemoryRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
+          <DocumentTitle language={language} />
           <Routes>
-            <Route path="/" element={<LandingScreen />} />
+            <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
+            <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
-        </MemoryRouter>
+        </BrowserRouter>
       </ThemeProvider>
     </AppContext.Provider>
   );
