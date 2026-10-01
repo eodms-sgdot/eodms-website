@@ -1,6 +1,7 @@
-import { useEffect, useRef, useContext } from 'react';
+import { useEffect, useRef, useContext, useState } from 'react';
 import { MapContainer, TileLayer, useMap, GeoJSON } from 'react-leaflet'; 
 import L, { LatLng, type LeafletEvent } from 'leaflet';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, TextField } from '@mui/material';
 import { AppContext } from '../AppContext';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
@@ -82,8 +83,10 @@ function MapZoomController({ bounds }: { bounds?: [number, number, number, numbe
  * @param {Function} props.onAoiDrawn - Callback to pass the generated BBOX up to the parent.
  * @param {Function} props.setBbox - Callback to clear the BBOX from local storage when it's removed.
  */
-function DrawControl({ onAoiDrawn, drawnItemsRef, setBbox }: { 
+function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, setBbox }: { 
   onAoiDrawn: (bbox: [number, number, number, number]) => void;
+  onOpenCoordinateEntry: () => void;
+  coordinateEntryLabel: string;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
   setBbox: (bbox: string | null) => void;
 }) {
@@ -99,6 +102,26 @@ function DrawControl({ onAoiDrawn, drawnItemsRef, setBbox }: {
     });
     
     map.addControl(drawControl);
+
+    const drawToolbar = drawControl.getContainer()?.querySelector('.leaflet-draw-toolbar');
+    if (drawToolbar instanceof HTMLElement) {
+      const coordinateButton = L.DomUtil.create('a', 'leaflet-draw-coordinate-entry', drawToolbar);
+      coordinateButton.href = '#';
+      coordinateButton.title = coordinateEntryLabel;
+      coordinateButton.setAttribute('role', 'button');
+      coordinateButton.setAttribute('aria-label', coordinateEntryLabel);
+      coordinateButton.textContent = 'XY';
+      coordinateButton.style.backgroundImage = 'none';
+      coordinateButton.style.color = '#333';
+      coordinateButton.style.fontSize = '10px';
+      coordinateButton.style.fontWeight = 'bold';
+      coordinateButton.style.lineHeight = '26px';
+      L.DomEvent.disableClickPropagation(coordinateButton);
+      L.DomEvent.on(coordinateButton, 'click', (event) => {
+        L.DomEvent.preventDefault(event);
+        onOpenCoordinateEntry();
+      });
+    }
     
     const onDrawCreated = (e: L.LeafletEvent) => {
       const event = e as DrawCreatedEvent;
@@ -127,7 +150,7 @@ function DrawControl({ onAoiDrawn, drawnItemsRef, setBbox }: {
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
     };
-  }, [map, onAoiDrawn, drawnItemsRef, setBbox]);
+  }, [map, onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, setBbox]);
   
   return null;
 }
@@ -202,6 +225,39 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
 export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = {}, onFeatureClick, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
   const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup());
   const { language, locationSearchProvider, baseMapLayer, t } = useContext(AppContext)!; 
+  const [coordinateDialogOpen, setCoordinateDialogOpen] = useState(false);
+  const [coordinateValues, setCoordinateValues] = useState(['', '']);
+  const [coordinateError, setCoordinateError] = useState(false);
+  const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
+  const coordinateLabels = [t('longitude'), t('latitude')];
+  const handleOpenCoordinateEntry = () => {
+    setCoordinateValues(['', '']);
+    setCoordinateError(false);
+    setCoordinateDialogOpen(true);
+  };
+  const handleCoordinateSubmit = () => {
+    const coordinates = coordinateValues.map(value => value.trim() === '' ? NaN : Number(value));
+    const [longitude, latitude] = coordinates;
+    const buffer = 0.1;
+    if (!coordinates.every(Number.isFinite) || longitude < -180 + buffer || longitude > 180 - buffer || latitude < -90 + buffer || latitude > 90 - buffer) {
+      setCoordinateError(true);
+      return;
+    }
+
+    const bbox: [number, number, number, number] = [
+      Number((longitude - buffer).toFixed(10)),
+      Number((latitude - buffer).toFixed(10)),
+      Number((longitude + buffer).toFixed(10)),
+      Number((latitude + buffer).toFixed(10)),
+    ];
+    const rectangle = L.rectangle([[bbox[1], bbox[0]], [bbox[3], bbox[2]]]);
+    drawnItemsRef.current?.clearLayers();
+    drawnItemsRef.current?.addLayer(rectangle);
+    setBbox(bbox.join(','));
+    setCoordinateZoomBounds(bbox);
+    setCoordinateDialogOpen(false);
+    onAoiDrawn(bbox);
+  };
   
   return (
     <MapContainer center={[56.13, -106.34]} zoom={4} style={{ height: '100%', width: '100%' }}>
@@ -218,9 +274,35 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       )
       }
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
-      <DrawControl onAoiDrawn={onAoiDrawn} drawnItemsRef={drawnItemsRef} setBbox={setBbox}/>
+      <DrawControl onAoiDrawn={onAoiDrawn} onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController bounds={zoomBounds} />
+      <MapZoomController bounds={coordinateZoomBounds} />
+
+      <Dialog open={coordinateDialogOpen} onClose={() => setCoordinateDialogOpen(false)}>
+        <DialogTitle>{t('coordinateEntry')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{t('coordinateBuffer')}</DialogContentText>
+          {coordinateError && <Alert severity="error" sx={{ mb: 2 }}>{t('invalidCoordinates')}</Alert>}
+          {coordinateLabels.map((label, index) => (
+            <TextField
+              key={label}
+              autoFocus={index === 0}
+              margin="dense"
+              label={label}
+              type="number"
+              slotProps={{ htmlInput: { step: 'any' } }}
+              value={coordinateValues[index]}
+              onChange={event => setCoordinateValues(values => values.map((value, valueIndex) => valueIndex === index ? event.target.value : value))}
+              fullWidth
+            />
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCoordinateDialogOpen(false)}>{t('cancel')}</Button>
+          <Button onClick={handleCoordinateSubmit} variant="contained">{t('apply')}</Button>
+        </DialogActions>
+      </Dialog>
 
       {searchResults.map(item => {
         const isSelected = !!selectedFootprints[item.id];
