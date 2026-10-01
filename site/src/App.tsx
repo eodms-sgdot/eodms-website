@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, BrowserRouter, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, HashRouter, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AppContext } from './AppContext';
 import { darkMode, lightMode, type DisplayMode } from './theme';
@@ -182,14 +182,14 @@ export default function App() {
     }}>
       <ThemeProvider theme={displayMode === "light" ? lightMode : darkMode}>
         <CssBaseline />
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <HashRouter>
           <DocumentTitle language={language} />
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
             <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
-        </BrowserRouter>
+        </HashRouter>
       </ThemeProvider>
     </AppContext.Provider>
   );
