@@ -4,6 +4,8 @@ export type Language = "en" | "fr";
 export const translations = {
   en: {
     appTitle: "EODMS",
+    termsOfUseTitle: "Terms of Use",
+    termsOfUseAgree: "Agree",
     naplTitle: "Digital National Air Photo Library",
     naplWelcomeTitle: "Canada from above",
     naplWelcomeBody: "Discover Canada's historical aerial photography and search the National Air Photo Library by place and date.",
@@ -135,6 +137,8 @@ export const translations = {
   },
   fr: {
     appTitle: "SGDOT",
+    termsOfUseTitle: "Conditions d’utilisation",
+    termsOfUseAgree: "Accepter",
     naplTitle: "Photothèque nationale de l'air numérique",
     naplWelcomeTitle: "Le Canada vu du ciel",
     naplWelcomeBody: "Découvrez les photographies aériennes historiques du Canada et recherchez la Photothèque nationale de l'air par lieu et par date.",

@@ -5,11 +5,13 @@ import LockIcon from '@mui/icons-material/Lock';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import { AppContext } from '../AppContext';
 import StacMap from '../components/StacMap';
 import SearchPanel from '../components/SearchPanel';
 import ResultsPanel from '../components/ResultsPanel';
 import AuthPanel from '../components/AuthPanel';
+import TermsOfUseDialog from '../components/TermsOfUseDialog';
 import type { STACCollection, STACItem } from '../types';
 import { createDateRange, formatStacDate } from '../utils/DateUtils';
 import { buildFilter } from '../utils/FilterBuilder';
@@ -41,6 +43,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     setUsername, setAuthErrorMessage, displayMode, bbox, setBbox, filters, t } = useContext(AppContext)!;
   
   const [authButtonEl, setAuthButtonEl] = useState<HTMLButtonElement | null>(null);
+  const [manualTermsOpen, setManualTermsOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
@@ -452,9 +455,20 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
           </Box>
 
           <Popover open={isAuthOpen} anchorEl={authButtonEl} onClose={() => setIsAuthOpen(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
-            {!authToken ?
-              <AuthPanel /> : <LogoutPanel/>
-            }
+            <Box>
+              {!authToken ? <AuthPanel /> : <LogoutPanel />}
+              <Button
+                fullWidth
+                startIcon={<DescriptionOutlinedIcon />}
+                onClick={() => {
+                  setIsAuthOpen(false);
+                  setManualTermsOpen(true);
+                }}
+                sx={{ justifyContent: 'flex-start', px: 2, mb: 1 }}
+              >
+                {t('termsOfUseTitle')}
+              </Button>
+            </Box>
           </Popover>
           <OrderPanel 
             anchorEl={ordersAnchorEl}
@@ -533,6 +547,13 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
       <Snackbar open={!!searchError} autoHideDuration={5000} onClose={() => setSearchError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setSearchError(null)} severity="error" sx={{ width: '100%' }}>{searchError}</Alert>
       </Snackbar>
+      <TermsOfUseDialog
+        key={username ?? 'anonymous'}
+        username={username}
+        authenticated={!!authToken}
+        manualOpen={manualTermsOpen}
+        onManualClose={() => setManualTermsOpen(false)}
+      />
     </Box>
   );
 }
