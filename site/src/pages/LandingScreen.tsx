@@ -15,7 +15,6 @@ import TermsOfUseDialog from '../components/TermsOfUseDialog';
 import type { STACCollection, STACItem } from '../types';
 import { createDateRange, formatStacDate } from '../utils/DateUtils';
 import { buildFilter } from '../utils/FilterBuilder';
-import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from '../services/AAAService';
 import LoadingMask from '../components/masker/LoadingMask';
 import { StacSearchService } from '../services/StacSearchService';
 import type { StacSearchParams, StacSearchResult } from '../services/StacSearchService';
@@ -38,9 +37,9 @@ interface LandingScreenProps {
 }
 
 export default function LandingScreen({ experience }: LandingScreenProps) {
-  const { stacEndpoint, refreshEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate, 
-    username, authToken, refreshToken, authExpiry, refreshExpiry, setAuthToken, setRefreshToken, setAuthExpiry, setRefreshExpiry, isAuthOpen, setIsAuthOpen, 
-    setUsername, setAuthErrorMessage, displayMode, bbox, setBbox, filters, t } = useContext(AppContext)!;
+const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate,
+    username, authToken, getValidAuthToken, isAuthOpen, setIsAuthOpen,
+    displayMode, bbox, setBbox, filters, t } = useContext(AppContext)!;
   
   const [authButtonEl, setAuthButtonEl] = useState<HTMLButtonElement | null>(null);
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
@@ -122,41 +121,13 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
     if (authToken) {
-      if (isRefreshRequired(authExpiry)) {
-        if (refreshExpiry && isRefreshTokenExpired(refreshExpiry)) {
-          setAuthToken(null);
-          setAuthExpiry(null);
-          setRefreshToken(null);
-          setRefreshExpiry(null);
-          setUsername(null);
-          setAuthErrorMessage('errorCredentialsExpired');
-          setIsAuthOpen(true);
-          setIsSearching(false);
-          setRightOpen(false);
-          throw new Error("Credentials expired");
-          
-        } else if (refreshToken) {
-          const response = await refreshAuthenticationToken(
-            refreshEndpoint,
-            refreshToken,
-          );
-          const currentTime = new Date();
-          const authExpiryTime = new Date(
-            +currentTime + response.expires_in * 1000,
-          );
-          setAuthToken(response.access_token);
-          setAuthExpiry(authExpiryTime.toISOString());
-
-          const responseToken = response.refresh_token;
-          if(refreshToken !== responseToken) {
-            const refreshExpiryTime = new Date(+currentTime + response.refresh_token_expires_in);
-            setRefreshToken(responseToken);
-            setRefreshExpiry(refreshExpiryTime.toISOString());
-          }
-        }
-    
+      try {
+        headers['Authorization'] = `Bearer ${await getValidAuthToken()}`;
+      } catch (e) {
+        setIsSearching(false);
+        setRightOpen(false);
+        throw e;
       }
-      headers['Authorization'] = `Bearer ${authToken}`;
     }
 
     return headers;
@@ -259,6 +230,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     setActiveThumbnails({});
     setFocusedItem(null);
     setClearAoiTrigger(prev => prev + 1); // increment to trigger AOI clear effect. 
+    setBbox(null);
     console.log(pagingState);
     setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
     setNumberMatched(null);
@@ -524,7 +496,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={handleSearch} zoomBounds={zoomBounds} 
+            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox); }} zoomBounds={zoomBounds} 
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               activeThumbnails={activeThumbnails} setBbox={setBbox}
             />

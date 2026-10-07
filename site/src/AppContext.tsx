@@ -37,6 +37,8 @@ export interface AppContextType {
   setRefreshToken: (token: string | null) => void;
   refreshExpiry: string | null;
   setRefreshExpiry: (token: string | null) => void;
+  /** Returns a non-expired access token, refreshing it if needed. Throws if the session has ended. */
+  getValidAuthToken: () => Promise<string>;
   isAuthOpen: boolean;
   setIsAuthOpen: (isOpen: boolean) => void;
   authErrorMessage: string | null;

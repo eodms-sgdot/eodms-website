@@ -11,7 +11,7 @@ export interface GetItemResponse {
   request_id: string;
   status: 'Invalid' | 'Queued' | 'Acquired' | 'Processing' | 'ItemsRestoring' | 'ItemsRestored' 
     | 'PartiallyAvailable' | 'Available' | 'Evicting' | 'Evicted' | 'Failed' | 'AwaitingPermissionsCheck';
-  suggested_retry_interval: number;
+  suggested_retry_interval?: number | null;
 }
 
 /**
@@ -43,13 +43,16 @@ export class EODMSOrderService implements IOrderService {
         }
       });
 
-      /*
-      if (!response.ok) {
-        throw new Error(`Failed to check status for order ${itemIds[0]}`);
-      }
-      */
+      const body = await response.json().catch(() => ({}));
+      const retryAfterHeader = Number(response.headers.get('Retry-After'));
 
-      return response.json();
+      // Error responses (429/503) don't carry suggested_retry_interval, so fall back to Retry-After.
+      return {
+        ...body,
+        code: body.code ?? response.status,
+        suggested_retry_interval: body.suggested_retry_interval
+          ?? (Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : null),
+      };
 
     } catch (e) {
       console.error("Network failure", e);

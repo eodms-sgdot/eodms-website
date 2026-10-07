@@ -31,6 +31,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DownloadIcon from "@mui/icons-material/Download";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
+import ReplayIcon from "@mui/icons-material/Replay";
 
 /**
  * Properties for the ResultsPanel component.
@@ -462,13 +463,13 @@ export default function ResultsPanel({
                         </Tooltip>
                       ) : associatedOrder.status === "Failed" ? ( 
                         <Tooltip 
-                          title={`${associatedOrder.message}`}
+                          title={associatedOrder.error || associatedOrder.message || `${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}`}
                         >
                           <span>
                             <Button
                               size="small"
                               color="error"
-                              startIcon={<ShoppingBagIcon />}
+                              startIcon={<ReplayIcon />}
                               disabled={isItemLoading}
                               onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
                         >
@@ -478,7 +479,7 @@ export default function ResultsPanel({
                         </Tooltip>
                       ) : (
                         <Tooltip
-                          title={`${t("currentStatus")}: ${associatedOrder.status}. ${t("checkingSeconds")}`}
+                          title={`${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}
                         >
                           <span>
                             <Button

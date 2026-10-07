@@ -15,6 +15,13 @@ export interface OrderInfo {
   requestId: string;
   format?: string;
   orderKeys: string[];
+  /** Raw status reported by the order service (e.g. Queued, ItemsRestoring) */
+  serverStatus?: string;
+  /** Server-suggested delay before the next status check */
+  retryAfterSeconds?: number;
+  nextCheckAt?: string;
+  /** Consecutive checks without a server retry hint, used for backoff */
+  attempts?: number;
 }
 
 /**

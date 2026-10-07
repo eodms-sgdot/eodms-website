@@ -12,6 +12,8 @@ import {
 import type { OrderInfo } from "../services/IOrderService"; // Adjust path to match your folder structure
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
+import DownloadIcon from "@mui/icons-material/Download";
+import ReplayIcon from "@mui/icons-material/Replay";
 import { useContext, useState } from "react";
 import { AppContext } from "../AppContext";
 
@@ -28,8 +30,37 @@ export default function OrderPanel({
 }: OrderPanelProps) {
 
   const isOpen = Boolean(anchorEl);
-  const { username, language, t } = useContext(AppContext)!;
+  const { username, language, expireOrder, triggerNewOrder, t } = useContext(AppContext)!;
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+
+  const handleRetry = async (order: OrderInfo) => {
+    const key = order.collection + order.itemIds.join();
+    setRetrying(key);
+    try {
+      await triggerNewOrder(order.itemIds, order.orderKeys, order.collection);
+    } catch (e) {
+      console.error("Order retry error:", e);
+      alert(t("errorOrderSubmitFailed"));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
+  /**
+   * Opens the download link if it hasn't expired, otherwise removes the order so it can be re-ordered.
+   * Mirrors the download behaviour in ResultsPanel.
+   */
+  const handleDownload = (order: OrderInfo) => {
+    if (order.downloadUrl) {
+      const expiresStr = new URL(order.downloadUrl).searchParams.get("Expires");
+      if (expiresStr && new Date() < new Date(parseInt(expiresStr) * 1000)) {
+        window.open(order.downloadUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+    expireOrder(order.orderId);
+  };
 
   /**
    * Copies the order key to the user's clipboard.
@@ -135,6 +166,13 @@ export default function OrderPanel({
             >
               {t("statusAvailable")}
             </Typography>
+            {order.downloadUrl && (
+              <Tooltip title={t("download")}>
+                <IconButton size="small" color="success" onClick={() => handleDownload(order)}>
+                  <DownloadIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         );
 
@@ -143,8 +181,8 @@ export default function OrderPanel({
           <Box
             sx={{
               display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
+              alignItems: "center",
+              justifyContent: "flex-end",
               gap: 0.5,
             }}
           >
@@ -170,6 +208,18 @@ export default function OrderPanel({
               >
                 {t("statusFailed")} ⚠
               </Typography>
+            </Tooltip>
+            <Tooltip title={t("retryOrder")}>
+              <span>
+                <IconButton
+                  size="small"
+                  color="error"
+                  disabled={retrying === order.collection + order.itemIds.join()}
+                  onClick={() => handleRetry(order)}
+                >
+                  <ReplayIcon fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
         );

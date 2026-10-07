@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, HashRouter, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AppContext } from './AppContext';
@@ -9,7 +9,7 @@ import type { FilterValue } from './types';
 import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
 import { useOrderPolling } from './hooks/useOrderPolling';
-import { isRefreshRequired, isRefreshTokenExpired } from './services/AAAService';
+import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { eodmsExperience, naplExperience } from './experiences';
 
 function DocumentTitle({ language }: { language: Language }) {
@@ -70,10 +70,56 @@ export default function App() {
     }
   });
 
+  const refreshInFlight = useRef<Promise<string> | null>(null);
+
+  /**
+   * Returns a usable access token, refreshing it first if it has expired.
+   * Logs the user out and throws if the session can no longer be refreshed.
+   */
+  const getValidAuthToken = useCallback(async (): Promise<string> => {
+    if (!authToken) {
+      throw new Error("Not authenticated");
+    }
+    if (!isRefreshRequired(authExpiry)) {
+      return authToken;
+    }
+    if (!refreshToken || !refreshExpiry || isRefreshTokenExpired(refreshExpiry)) {
+      setUsername(null);
+      setAuthToken(null);
+      setAuthExpiry(null);
+      setRefreshToken(null);
+      setRefreshExpiry(null);
+      setAuthErrorMessage('errorCredentialsExpired');
+      setIsAuthOpen(true);
+      throw new Error("Credentials expired");
+    }
+
+    // Share one refresh between concurrent callers (e.g. several orders polled at once).
+    if (!refreshInFlight.current) {
+      refreshInFlight.current = (async () => {
+        try {
+          const response = await refreshAuthenticationToken(refreshEndpoint, refreshToken);
+          const now = Date.now();
+          setAuthToken(response.access_token);
+          setAuthExpiry(new Date(now + response.expires_in * 1000).toISOString());
+          if (response.refresh_token && response.refresh_token !== refreshToken) {
+            setRefreshToken(response.refresh_token);
+            setRefreshExpiry(new Date(now + response.refresh_token_expires_in * 1000).toISOString());
+          }
+          return response.access_token;
+        } finally {
+          refreshInFlight.current = null;
+        }
+      })();
+    }
+    return refreshInFlight.current;
+  }, [authToken, authExpiry, refreshToken, refreshExpiry, refreshEndpoint]);
+
   const { orders, isOrderingSupported, triggerNewOrder, expireOrder } = useOrderPolling(
     (username ? username : ''),
     (authToken ? authToken : ''),
-    stacEndpoint
+    stacEndpoint,
+    getValidAuthToken
   );
 
   useEffect(() => {
@@ -174,6 +220,7 @@ export default function App() {
       stacEndpoint, setStacEndpoint, 
       authToken, setAuthToken, authExpiry, setAuthExpiry,
       refreshToken, setRefreshToken, refreshExpiry, setRefreshExpiry,
+      getValidAuthToken,
       isAuthOpen, setIsAuthOpen,
       authErrorMessage, setAuthErrorMessage,
       language, setLanguage, 

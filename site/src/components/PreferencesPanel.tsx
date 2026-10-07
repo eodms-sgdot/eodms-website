@@ -13,7 +13,6 @@ import {
   Select,
   MenuItem,
   Tooltip,
-  TextField,
   FormControl,
 } from "@mui/material";
 import { AppContext } from "../AppContext";
@@ -34,8 +33,6 @@ export default function PreferencesPanel({
   onClose,
 }: PreferencesPanelProps) {
   const {
-    stacEndpoint,
-    setStacEndpoint,
     displayMode,
     setDisplayMode,
     locationSearchProvider,
@@ -50,7 +47,6 @@ export default function PreferencesPanel({
     t,
   } = useContext(AppContext)!;
   const isOpen = Boolean(anchorEl);
-  const isEndpointLocked = import.meta.env.VITE_LOCK_STAC_ENDPOINT === 'true';
   const availableLayers = getBaseMaps();
 
   return (
@@ -67,22 +63,6 @@ export default function PreferencesPanel({
         </Typography>
         <Table size="small">
           <TableBody>
-            <TableRow>
-              <TableCell sx={{p: 1}}>
-                <Box sx={{ display: "flex", alignItems: "left", gap: 1, flexDirection:'column' }} >
-                  <Tooltip title={t('stacEndpoint')}>
-                    <TextField 
-                      size="small" 
-                      value={stacEndpoint} 
-                      onChange={(e) => setStacEndpoint(e.target.value)} 
-                      label={t('stacEndpoint')} 
-                      disabled={isEndpointLocked} 
-                    />
-                  </Tooltip>
-                </Box>
-              </TableCell>
-            </TableRow>
-
             <TableRow>
               <TableCell
                 sx={{
@@ -267,6 +247,9 @@ export default function PreferencesPanel({
             </TableRow>
           </TableBody>
         </Table>
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 1, textAlign: "right" }}>
+          {t("version")} {import.meta.env.VITE_APP_VERSION}
+        </Typography>
       </Box>
     </Popover>
   );

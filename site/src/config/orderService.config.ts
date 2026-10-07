@@ -6,45 +6,49 @@ export const SERVICE_REGISTRY: RegistryEntry[] = [
     name: "EODMS STAC Catalog",
     condition: (url) => url.hostname === "eodms-sgdot.nrcan-rncan.gc.ca",
     ServiceClass: EODMSOrderService,
-    getOrderEndpoint: (url) => `${url.origin}/dds/v1/item`,
+    // DDS has no CORS headers, so local dev goes through the Vite /dds proxy.
+    getOrderEndpoint: (url) => `${import.meta.env.DEV ? '' : url.origin}/dds/v1/item`,
 
     // 1. Define how to transform the order service response in a general way.
     transformResponse: (raw: unknown, itemIds: string[], orderKeys: string[], collection: string): OrderInfo => {
-      const payload = raw as Record<string, unknown>;
+      // A null response means a network failure; treat it as retryable.
+      const payload = (raw ?? {}) as Record<string, unknown>;
 
       let normalizedStatus: OrderInfo['status'] = 'Pending';
-      /*
-      if (payload.status === 'Available') {
-        normalizedStatus = 'Available';
-      } else if (payload.status === 'Failed' || payload.status === 'Invalid') {
-        normalizedStatus = 'Failed';
-      } else if (payload.status === 'Processing' || payload.status === 'Queued' || payload.status === 'Acquired') {
-        normalizedStatus = 'Processing';
-      }
-      */
+      const serverStatus = payload.status ? String(payload.status) : undefined;
 
-      const statusCode = Number(payload.code);
-      if (statusCode === 200) {
-        normalizedStatus = 'Available';
+      // DDS can return code 200 with a terminal non-available status, so check status first.
+      const statusCode = Number(payload.code) || 0;
+      if (serverStatus === 'Failed' || serverStatus === 'Invalid' || serverStatus === 'Evicting' || serverStatus === 'Evicted') {
+        normalizedStatus = 'Failed';
+      } else if (statusCode === 200) {
+        normalizedStatus = serverStatus === 'Available' && payload.download_url ? 'Available' : 'Processing';
       } else if (statusCode === 202) {
         normalizedStatus = 'Processing';
-      } else if (statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 429 || statusCode === 500 || statusCode === 503) {
+      } else if (statusCode === 0 || statusCode === 401 || statusCode === 429 || statusCode === 503) {
+        normalizedStatus = 'Pending';
+      } else if (statusCode >= 400) {
         normalizedStatus = 'Failed';
       }
+
+      const retryInterval = payload.suggested_retry_interval;
 
       // 2. Perform translation
       return {
         orderId: payload.order_id ? String(payload.order_id) : '',
         itemIds: itemIds,
         status: normalizedStatus,
-        message: payload.message ? String(payload.message) : '',
+        message: payload.message ? String(payload.message) : (raw ? '' : 'Network error'),
+        error: payload.error ? String(payload.error) : undefined,
         downloadUrl: payload.download_url ? String(payload.download_url) : undefined,
         lastUpdate: payload.last_update ? String(payload.last_update) : new Date().toISOString(),
-        code: Number(payload.code),
+        code: statusCode,
         collection: collection,
-        requestId: String(payload.request_id),
+        requestId: payload.request_id ? String(payload.request_id) : '',
         format: payload.format ? String(payload.format) : '',
-        orderKeys: orderKeys ? [String(orderKeys)] : []
+        orderKeys: orderKeys ? [String(orderKeys)] : [],
+        serverStatus,
+        retryAfterSeconds: typeof retryInterval === 'number' && retryInterval >= 0 ? retryInterval : undefined,
       };
     },
   },
