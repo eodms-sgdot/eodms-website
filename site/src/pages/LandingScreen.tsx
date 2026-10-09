@@ -137,12 +137,12 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     return headers;
   };
 
-  const handleSearchResult = (result: StacSearchResult) => {
+  const handleSearchResult = (result: StacSearchResult, zoomToResults = true) => {
     setSearchResults(result.items);
     setSelectedFootprints({});
     setFocusedItem(null);
     const extent = getItemsExtent(result.items);
-    if (extent) setZoomBounds(extent);
+    if (extent && zoomToResults) setZoomBounds(extent);
     setPagingState({
       hasNext: result.hasNext,
       hasPrevious: result.hasPrevious,
@@ -282,7 +282,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * * @async
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
-  const handleSearch = async (searchBbox?: [number, number, number, number]) => {
+  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true) => {
     const collectionIDs = experience.fixedCollectionId
       ? [experience.fixedCollectionId]
       : selectedCollections.map(collection => collection.id);
@@ -338,7 +338,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
     try {
       const result = await searchService.current.search(params, await getHeaders());
-      handleSearchResult(result);
+      handleSearchResult(result, zoomToResults);
       setNumberMatched(searchService.current.getNumberMatched());
     } catch (e) {
       if (axios.isCancel(e)) return;
@@ -504,7 +504,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox); }} zoomBounds={zoomBounds} 
+            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox, false); }} zoomBounds={zoomBounds} 
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               activeThumbnails={activeThumbnails} setBbox={setBbox}
             />

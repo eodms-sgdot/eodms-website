@@ -15,6 +15,8 @@ import axios from 'axios';
 
 // Refresh this long before the access token expires so in-flight requests don't carry a stale token.
 const REFRESH_MARGIN_MS = 60_000;
+// AAA only rotates the refresh token during the final ten minutes before it expires.
+const REFRESH_TOKEN_ROTATION_MARGIN_MS = 10 * 60_000;
 
 /**
  * Runs once at startup: clears a stored session that can no longer be refreshed
@@ -111,7 +113,12 @@ export default function App() {
     if (!authToken) {
       throw new Error("Not authenticated");
     }
-    if (!authExpiry || Date.parse(authExpiry) - REFRESH_MARGIN_MS > Date.now()) {
+    const now = Date.now();
+    const accessRefreshAt = authExpiry ? Date.parse(authExpiry) - REFRESH_MARGIN_MS : Number.POSITIVE_INFINITY;
+    const refreshTokenRefreshAt = refreshExpiry
+      ? Date.parse(refreshExpiry) - REFRESH_TOKEN_ROTATION_MARGIN_MS
+      : Number.POSITIVE_INFINITY;
+    if (Math.min(accessRefreshAt, refreshTokenRefreshAt) > now) {
       return authToken;
     }
     if (!refreshToken || !refreshExpiry || isRefreshTokenExpired(refreshExpiry)) {
@@ -144,16 +151,21 @@ export default function App() {
   }, [authToken, authExpiry, refreshToken, refreshExpiry, refreshEndpoint, signOut]);
 
   /**
-   * Keeps the session alive while the page is open: refreshes shortly before the access token
-   * expires, and re-checks when the tab becomes visible again (timers are throttled while dormant).
+   * Keeps the session alive while the page is open: refreshes shortly before either token's
+   * refresh deadline, and re-checks when the tab becomes visible again (timers are throttled while dormant).
    */
   useEffect(() => {
-    if (!authToken || !authExpiry) return;
+    if (!authToken || (!authExpiry && !refreshExpiry)) return;
 
     const check = () => { getValidAuthToken().catch((e) => console.warn("Token refresh failed:", e)); };
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
 
-    const timer = setTimeout(check, Math.max(0, Date.parse(authExpiry) - REFRESH_MARGIN_MS - Date.now()));
+    const accessRefreshAt = authExpiry ? Date.parse(authExpiry) - REFRESH_MARGIN_MS : Number.POSITIVE_INFINITY;
+    const refreshTokenRefreshAt = refreshExpiry
+      ? Date.parse(refreshExpiry) - REFRESH_TOKEN_ROTATION_MARGIN_MS
+      : Number.POSITIVE_INFINITY;
+    const nextRefreshAt = Math.min(accessRefreshAt, refreshTokenRefreshAt);
+    const timer = setTimeout(check, Math.max(0, nextRefreshAt - Date.now()));
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', check);
 
@@ -162,7 +174,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', check);
     };
-  }, [authToken, authExpiry, getValidAuthToken]);
+  }, [authToken, authExpiry, refreshExpiry, getValidAuthToken]);
 
   const { orders, isOrderingSupported, triggerNewOrder, expireOrder } = useOrderPolling(
     (username ? username : ''),

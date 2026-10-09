@@ -175,7 +175,7 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
       style: 'button',
       autoClose: true,
       keepResult: true,
-      retainZoomLevel: true,
+      retainZoomLevel: false,
       showMarker: false,
       searchLabel: searchLabel + '...',
     });
@@ -190,6 +190,7 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
         const southWest = L.latLng(b[0][0], b[0][1]);
         const northEast = L.latLng(b[1][0], b[1][1]);
         const bounds = L.latLngBounds(southWest, northEast);
+        map.fitBounds(bounds, { padding: [50, 50], animate: true });
 
         // Draw the bounding box on the map
         const rectangle = L.rectangle(bounds, {
