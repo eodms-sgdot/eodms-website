@@ -11,6 +11,27 @@ import { fields } from './session';
 import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { eodmsExperience, naplExperience } from './experiences';
+import axios from 'axios';
+
+// Refresh this long before the access token expires so in-flight requests don't carry a stale token.
+const REFRESH_MARGIN_MS = 60_000;
+
+/**
+ * Runs once at startup: clears a stored session that can no longer be refreshed
+ * (e.g. revisiting after the browser was dormant). A refreshable session is kept and refreshed.
+ */
+function clearUnrefreshableSession() {
+  const authToken = localStorage.getItem(fields.token);
+  if (!authToken) return;
+  const refreshToken = localStorage.getItem(fields.refreshToken);
+  const refreshExpiry = localStorage.getItem(fields.refreshExpiry);
+  if (refreshToken && refreshExpiry && !isRefreshTokenExpired(refreshExpiry)) return;
+  if (!isRefreshRequired(localStorage.getItem(fields.expiry)) && !refreshToken) return;
+
+  [fields.username, fields.token, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+    .forEach((key) => localStorage.removeItem(key));
+}
+clearUnrefreshableSession();
 
 function DocumentTitle({ language }: { language: Language }) {
   const location = useLocation();
@@ -72,25 +93,29 @@ export default function App() {
 
   const refreshInFlight = useRef<Promise<string> | null>(null);
 
+  const signOut = useCallback((message: string | null) => {
+    setUsername(null);
+    setAuthToken(null);
+    setAuthExpiry(null);
+    setRefreshToken(null);
+    setRefreshExpiry(null);
+    setAuthErrorMessage(message);
+    if (message) setIsAuthOpen(true);
+  }, []);
+
   /**
-   * Returns a usable access token, refreshing it first if it has expired.
-   * Logs the user out and throws if the session can no longer be refreshed.
+   * Returns a usable access token, refreshing it first if it expires within REFRESH_MARGIN_MS.
+   * Signs the user out and throws if the session can no longer be refreshed.
    */
   const getValidAuthToken = useCallback(async (): Promise<string> => {
     if (!authToken) {
       throw new Error("Not authenticated");
     }
-    if (!isRefreshRequired(authExpiry)) {
+    if (!authExpiry || Date.parse(authExpiry) - REFRESH_MARGIN_MS > Date.now()) {
       return authToken;
     }
     if (!refreshToken || !refreshExpiry || isRefreshTokenExpired(refreshExpiry)) {
-      setUsername(null);
-      setAuthToken(null);
-      setAuthExpiry(null);
-      setRefreshToken(null);
-      setRefreshExpiry(null);
-      setAuthErrorMessage('errorCredentialsExpired');
-      setIsAuthOpen(true);
+      signOut('errorCredentialsExpired');
       throw new Error("Credentials expired");
     }
 
@@ -102,18 +127,42 @@ export default function App() {
           const now = Date.now();
           setAuthToken(response.access_token);
           setAuthExpiry(new Date(now + response.expires_in * 1000).toISOString());
-          if (response.refresh_token && response.refresh_token !== refreshToken) {
-            setRefreshToken(response.refresh_token);
-            setRefreshExpiry(new Date(now + response.refresh_token_expires_in * 1000).toISOString());
-          }
+          setRefreshToken(response.refresh_token);
+          setRefreshExpiry(new Date(now + response.refresh_token_expires_in * 1000).toISOString());
           return response.access_token;
+        } catch (e) {
+          if (axios.isAxiosError(e) && (e.response?.status === 400 || e.response?.status === 401)) {
+            signOut('errorCredentialsExpired');
+          }
+          throw e;
         } finally {
           refreshInFlight.current = null;
         }
       })();
     }
     return refreshInFlight.current;
-  }, [authToken, authExpiry, refreshToken, refreshExpiry, refreshEndpoint]);
+  }, [authToken, authExpiry, refreshToken, refreshExpiry, refreshEndpoint, signOut]);
+
+  /**
+   * Keeps the session alive while the page is open: refreshes shortly before the access token
+   * expires, and re-checks when the tab becomes visible again (timers are throttled while dormant).
+   */
+  useEffect(() => {
+    if (!authToken || !authExpiry) return;
+
+    const check = () => { getValidAuthToken().catch((e) => console.warn("Token refresh failed:", e)); };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+
+    const timer = setTimeout(check, Math.max(0, Date.parse(authExpiry) - REFRESH_MARGIN_MS - Date.now()));
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+    };
+  }, [authToken, authExpiry, getValidAuthToken]);
 
   const { orders, isOrderingSupported, triggerNewOrder, expireOrder } = useOrderPolling(
     (username ? username : ''),
@@ -122,20 +171,7 @@ export default function App() {
     getValidAuthToken
   );
 
-  useEffect(() => {
-    const hasExpiredAccessToken = Boolean(authToken && (!authExpiry || isRefreshRequired(authExpiry)));
-    const hasExpiredRefreshToken = Boolean(refreshToken && (!refreshExpiry || isRefreshTokenExpired(refreshExpiry)));
-
-    if (hasExpiredAccessToken || hasExpiredRefreshToken) {
-      setUsername(null);
-      setAuthToken(null);
-      setAuthExpiry(null);
-      setRefreshToken(null);
-      setRefreshExpiry(null);
-      setAuthErrorMessage(null);
-    }
-  }, [authToken, authExpiry, refreshToken, refreshExpiry, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setUsername, setAuthErrorMessage]);
-
+  // On load, only drop sessions that can no longer be refreshed; an expired access token is refreshed instead.
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(language, key);
 
   /**

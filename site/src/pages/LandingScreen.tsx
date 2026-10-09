@@ -21,9 +21,13 @@ import type { StacSearchParams, StacSearchResult } from '../services/StacSearchS
 import LogoutPanel from '../components/LogoutPanel';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import OrderPanel from '../components/OrderPanel';
+import OrderReadyNotifier from '../components/OrderReadyNotifier';
 import PreferencesPanel from '../components/PreferencesPanel';
 import { useIsMobile } from '../utils/RenderingUtils';
+import { getItemsExtent } from '../utils/GeometryUtils';
+import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
+import { OrbitLoader, SkyBar, TitleCharm } from '../components/OrbitCharm';
 
 const DRAWER_WIDTH = 320;
 
@@ -137,6 +141,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setSearchResults(result.items);
     setSelectedFootprints({});
     setFocusedItem(null);
+    const extent = getItemsExtent(result.items);
+    if (extent) setZoomBounds(extent);
     setPagingState({
       hasNext: result.hasNext,
       hasPrevious: result.hasPrevious,
@@ -202,7 +208,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           setRightOpen(false);
         }
 
-        setZoomBounds(item.bbox);
+        setZoomBounds(getItemsExtent([item]));
       }
       return next;
     });
@@ -218,7 +224,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       setRightOpen(false);
     }
     
-    setZoomBounds(item.bbox);
+    setZoomBounds(getItemsExtent([item]));
   }
 
   /**
@@ -334,7 +340,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       const result = await searchService.current.search(params, await getHeaders());
       handleSearchResult(result);
       setNumberMatched(searchService.current.getNumberMatched());
-    } catch {
+    } catch (e) {
+      if (axios.isCancel(e)) return;
       setSearchError(t('errorFetch'));
       setSearchResults([]);
     } finally {
@@ -378,7 +385,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <Toolbar variant="dense">
           <IconButton edge="start" onClick={() => setLeftOpen(!leftOpen)}><MenuIcon /></IconButton>
           <Typography variant="h6" color="primary" noWrap sx={{ ml: 1, flexShrink: 0 }}>
-            {t(experience.titleKey)}
+            <TitleCharm title={t(experience.titleKey)} />
           </Typography>
 
           {/* empty to make widgets below align right */}
@@ -447,9 +454,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             onClose={() => setOrdersAnchorEl(null)}
           />
         </Toolbar>
+        <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching}>
+      <LoadingMask loading={isSearching} indicator={<OrbitLoader />} onCancel={() => searchService.current.cancel()} cancelText={t('cancel')}>
         <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative' } }}>
             <SearchPanel 
@@ -519,6 +527,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       <Snackbar open={!!searchError} autoHideDuration={5000} onClose={() => setSearchError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setSearchError(null)} severity="error" sx={{ width: '100%' }}>{searchError}</Alert>
       </Snackbar>
+      <OrderReadyNotifier />
       <TermsOfUseDialog
         key={username ?? 'anonymous'}
         username={username}

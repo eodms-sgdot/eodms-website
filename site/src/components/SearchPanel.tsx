@@ -229,7 +229,6 @@ export default function SearchPanel({
           alignItems: "flex-start",
           bgcolor: "primary.main",
           color: "white",
-          borderRadius: "12px 12px 0 0",          
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, p:0 }}>

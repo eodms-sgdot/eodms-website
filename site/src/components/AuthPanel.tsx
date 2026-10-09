@@ -58,13 +58,21 @@ export default function AuthPanel() {
     <Box sx={{ p: 1}}>
       <Typography variant="h6" color="primary" gutterBottom>{t('authRequired')}</Typography>
       {loading ? <CircularProgress size={20} /> : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Box
+          component="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (username && password) fetchAuth();
+          }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
+        >
           <TextField label={t('username')} fullWidth size="small" value={username} onChange={handleUsernameChange} />
           <TextField label={t('password')} fullWidth size="small" value={password} onChange={handlePasswordChange} type="password"/>
           {authErrorMessage ? <Typography color="error">{t(authErrorMessage as TranslationKey)}</Typography>:<></>}
           <Box sx={{ display: 'flex', gap: 1 }}>
 
             <Button 
+              type="button"
               fullWidth variant="outlined" 
               onClick={() => { 
                 setIsAuthOpen(false); 
@@ -72,11 +80,10 @@ export default function AuthPanel() {
             </Button>
 
             <Button 
+              type="submit"
               fullWidth variant="contained" 
-              disabled={!username || !password} 
-              onClick={() => {
-                  fetchAuth();
-                }}> {t('login')}
+              disabled={!username || !password}>
+              {t('login')}
             </Button>
           </Box>
         </Box>

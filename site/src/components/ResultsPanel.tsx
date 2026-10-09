@@ -5,6 +5,7 @@ import {
   IconButton,
   Card,
   CardMedia,
+  CardActionArea,
   CardContent,
   CardActions,
   Dialog,
@@ -19,19 +20,47 @@ import {
   Skeleton,
   Checkbox,
   Tooltip,
+  Link,
+  LinearProgress,
 } from "@mui/material";
+import { keyframes } from "@emotion/react";
 import CloseIcon from "@mui/icons-material/Close";
-import ImageIcon from "@mui/icons-material/Image";
-import ViewHeadline from "@mui/icons-material/ViewHeadline";
-import ZoomInMap from "@mui/icons-material/ZoomInMap";
 import type { STACItem } from "../types";
 import { AppContext } from "../AppContext";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DownloadIcon from "@mui/icons-material/Download";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
-import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import DownloadDoneIcon from "@mui/icons-material/DownloadDone";
 import ReplayIcon from "@mui/icons-material/Replay";
+import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
+
+const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
+
+/** Publicly downloadable files on items that have no orderable product (e.g. CEOS-ARD), data files first. */
+const getDirectAssets = (item: STACItem): DownloadableAsset[] =>
+  Object.entries(item.assets)
+    .filter(([, a]) => /^https?:\/\//.test(a.href) && !a["auth:refs"]?.length
+      && a.roles?.some(r => ASSET_ROLE_ORDER.includes(r)))
+    .map(([key, a]) => ({
+      key,
+      title: a.title || key,
+      href: a.href,
+      rank: ASSET_ROLE_ORDER.findIndex(r => a.roles?.includes(r)),
+    }))
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ key, title, href }) => ({ key, title, href }));
+
+const readyPulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.6); }
+  100% { box-shadow: 0 0 0 10px rgba(46, 125, 50, 0); }
+`;
+
+const formatElapsed = (ms: number) => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+};
 
 /**
  * Properties for the ResultsPanel component.
@@ -115,6 +144,25 @@ export default function ResultsPanel({
   
   // Tracks multiple item IDs currently ordered. 
   const [itemsLoading, setItemsLoading] = useState<Record<string, boolean>>({});
+  // Order IDs downloaded during this session.
+  const [downloadedOrders, setDownloadedOrders] = useState<Set<string>>(() => new Set());
+  // Orders that became ready while this panel was mounted; each pulses once.
+  const [justReady, setJustReady] = useState<Set<string>>(() => new Set());
+  const [prevOrders, setPrevOrders] = useState(orders);
+  if (orders !== prevOrders) {
+    const wasPreparing = new Set(prevOrders.filter(o => o.status === "Pending" || o.status === "Processing").map(o => o.orderId));
+    const ready = orders.filter(o => o.status === "Available" && wasPreparing.has(o.orderId)).map(o => o.orderId);
+    setPrevOrders(orders);
+    if (ready.length > 0) setJustReady(prev => new Set([...prev, ...ready]));
+  }
+
+  const hasPreparingOrders = orders.some(o => o.status === "Pending" || o.status === "Processing");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hasPreparingOrders) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasPreparingOrders]);
 
   /**
    * Creates an order request using the itemUuid, order key and collection. 
@@ -150,6 +198,7 @@ export default function ResultsPanel({
         const expiryDate = new Date(parseInt(expiresStr) * 1000);
         if(new Date() < expiryDate) {
           window.open(downloadUrl, '_blank')?.focus();
+          setDownloadedOrders(prev => new Set(prev).add(orderId));
           return;
         }
       }
@@ -174,7 +223,8 @@ export default function ResultsPanel({
         try{
           const sizeValue = parseInt(sizeStr);
           
-          if (sizeValue === 0) return '0 B';
+          // A zero or unparsable size means the size is unknown, so show nothing.
+          if (!sizeValue || sizeValue < 0) return '';
     
           const units = [t('bAbbr'), t('kbAbbr'), t('mbAbbr'), t('gbAbbr'), t('tbAbbr'), t('pbAbbr')];
           const i = Math.min(
@@ -190,7 +240,7 @@ export default function ResultsPanel({
             ? value.toFixed(1) 
             : value.toFixed(2);
             
-          return ` ${parseFloat(formatted)}${units[i]}`;
+          return ` ${parseFloat(formatted)} ${units[i]}`;
               
         } catch {
           // size invalid
@@ -247,7 +297,6 @@ export default function ResultsPanel({
           alignItems: "flex-start",
           bgcolor: "primary.main",
           color: "white",
-          borderRadius: "12px 12px 0 0",
         }}
       >
         <Box>
@@ -314,6 +363,7 @@ export default function ResultsPanel({
             const directDownload:string|null = item.assets.product?.href ? item.assets.product.href : null;
             const orderKey:string|null = item.properties?.order_key ? String(item.properties?.order_key) : null;
             const filesize = associatedOrder ? getFilesizeFromUrl((associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null)) : '';
+            const directAssets = canOrderItem ? [] : getDirectAssets(item);
 
             return (
               <Card
@@ -326,20 +376,36 @@ export default function ResultsPanel({
                   bgcolor: isFocused ? "#e3f2fd" : "white",
                 }}
               >
-                <CardMedia
-                  component="img"
-                  height="100"
-                  image={thumbUrl}
-                  sx={{ bgcolor: "black" }}
-                />
+                <Tooltip title={isThumbnailActive ? t("hideMapHover") : t("showMapHover")}>
+                  <CardActionArea
+                    disabled={!thumbUrl}
+                    onClick={() => {
+                      onZoom(item);
+                      onToggleThumbnail(item.id, thumbUrl);
+                    }}
+                    sx={{
+                      outline: isThumbnailActive ? "3px solid" : "none",
+                      outlineColor: "success.main",
+                      outlineOffset: "-3px",
+                    }}
+                  >
+                    <CardMedia
+                      component="img"
+                      height="100"
+                      image={thumbUrl}
+                      sx={{ bgcolor: "black" }}
+                    />
+                  </CardActionArea>
+                </Tooltip>
                 <CardContent
                   sx={{
                     p: 0,
-                    pl: 0.5,
-                    pr: 1,
-                    pt: 1,
+                    pl: 1,
+                    pr: 1.5,
+                    pt: 1.25,
                     display: "flex",
                     alignItems: "flex-start",
+                    gap: 0.5,
                   }}
                 >
                   <Checkbox
@@ -353,72 +419,50 @@ export default function ResultsPanel({
                     }}
                   />
 
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.5,
-                      wordBreak: "break-all",
-                      fontWeight: isFocused ? 900 : isSelected ? 700 : 400,
-                      color: isFocused ? "primary.main" : "text.primary",
-                    }}
-                  >
-                    {item.collection}-{item.id}
-                  </Typography>
-                </CardContent>
-                <CardActions 
-                  sx={{ 
-                    px: 1, pb: 1, display: 'grid', 
-                    gridTemplateColumns: 'repeat(2, 1fr)', justifyContent: 'start', justifyItems: 'start', 
-                    '& > :not(style)': {
-                      marginLeft: '0px !important',
-                    }
-                  }}>
                   <Tooltip title={t("metadataHover")}>
-                    <Button
-                      size="small" startIcon={<ViewHeadline />}
+                    <Link
+                      component="button"
+                      variant="body2"
                       onClick={() => setActiveMetadata(item)}
+                      sx={{
+                        mt: 0.5,
+                        textAlign: "left",
+                        wordBreak: "break-all",
+                        fontWeight: isFocused ? 900 : isSelected ? 700 : 400,
+                      }}
                     >
-                      {t("metadata")}
-                    </Button>
+                      {`${item.collection} - ${orderKey ?? item.id}`}
+                    </Link>
                   </Tooltip>
-                  <Tooltip title={t("zoomHover")}>
-                    <Button size="small" startIcon={<ZoomInMap />} onClick={() => onZoom(item)}>
-                      {t("zoom")}
-                    </Button>
-                  </Tooltip>
-                  <Tooltip
-                    title={
-                      isThumbnailActive ? t("hideMapHover") : t("showMapHover")
-                    }
-                  >
-                    <Button
-                      size="small"
-                      startIcon={<ImageIcon />}
-                      color={isThumbnailActive ? "success" : "primary"}
-                      onClick={() => onToggleThumbnail(item.id, thumbUrl)}
-                      disabled={!thumbUrl}
-                    >
-                      {isThumbnailActive ? t("hideMap") : t("showMap")}
-                    </Button>
-                  </Tooltip>
-
+                </CardContent>
+                <CardActions
+                  sx={{
+                    // Indent to line up with the title text, past the checkbox column.
+                    pl: '40px', pr: 1.5, pt: 1.25, pb: 1.5,
+                    gap: 0.5,
+                    '& > :not(style) ~ :not(style)': { ml: 0 },
+                    '& .MuiButton-root': { whiteSpace: 'nowrap', minWidth: 'max-content' },
+                  }}
+                >
                   {/* ======================================================== */}
                   {/* CONDITIONAL ORDER BLOCK                                  */}
                   {/* ======================================================== */}
+                  {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
                   {isOrderingSupported && (
                     <>
                       {!canOrderItem ? (
-                        <Box/>
+                        null
                       ) : directDownload && !loginRequired ? (
                         <Tooltip title={t("download")}>
                           <span>
                             <Button
                               size="small"
-                              // variant="contained"
+                              variant="contained"
                               color="success"
                               startIcon={<DownloadIcon />}
                               href={directDownload}
                               target="_blank"
+                              rel="noopener noreferrer"
                             >
                               {t("download")}
                             </Button>
@@ -429,8 +473,9 @@ export default function ResultsPanel({
                           <span>
                             <Button
                               size="small"
+                              variant="outlined"
                               disabled
-                              startIcon={<ShoppingBagIcon />}
+                              startIcon={<Inventory2Icon />}
                             >
                               {t("orderZip")}
                             </Button>
@@ -440,9 +485,8 @@ export default function ResultsPanel({
                         <Tooltip title={t("downloadZipArchive")}>
                           <Button
                             size="small"
-                            // variant="contained"
-                            color="secondary"
-                            startIcon={<ShoppingBagIcon />}
+                            variant="outlined"
+                            startIcon={<Inventory2Icon />}
                             disabled={isItemLoading}
                             onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
                           >
@@ -450,17 +494,35 @@ export default function ResultsPanel({
                           </Button>
                         </Tooltip>
                       ) : associatedOrder.status === "Available" ? (
-                        <Tooltip title={t("download") + filesize}>
-                          <Button
-                            size="small"
-                            // variant="contained"
-                            color="success"
-                            startIcon={<DownloadIcon />}
-                            onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
-                          >
-                            {t("download") + filesize}
-                          </Button>
-                        </Tooltip>
+                        downloadedOrders.has(associatedOrder.orderId) ? (
+                          <Tooltip title={t("downloadAgain") + filesize}>
+                            <Button
+                              size="small"
+                              color="success"
+                              startIcon={<DownloadDoneIcon />}
+                              onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
+                            >
+                              {t("downloaded")}
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title={t("download") + filesize}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="success"
+                              startIcon={<DownloadIcon />}
+                              onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
+                              onAnimationEnd={() => setJustReady(prev => { const next = new Set(prev); next.delete(associatedOrder.orderId); return next; })}
+                              sx={{
+                                animation: justReady.has(associatedOrder.orderId) ? `${readyPulse} 1.2s ease-out 3` : "none",
+                                "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+                              }}
+                            >
+                              {t("download") + filesize}
+                            </Button>
+                          </Tooltip>
+                        )
                       ) : associatedOrder.status === "Failed" ? ( 
                         <Tooltip 
                           title={associatedOrder.error || associatedOrder.message || `${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}`}
@@ -478,25 +540,39 @@ export default function ResultsPanel({
                           </span>
                         </Tooltip>
                       ) : (
+                        <>
                         <Tooltip
-                          title={`${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}
+                          title={`${t("preparingHover")} ${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}
                         >
                           <span>
                             <Button
                               size="small"
-                              // variant="outlined"
                               color="warning"
                               disabled
                               startIcon={<HourglassEmptyIcon />}
                             >
-                              {t("processing")}
+                              {t("preparing")}
+                              {associatedOrder.orderDate && ` ${formatElapsed(now - Date.parse(associatedOrder.orderDate))}`}
                             </Button>
                           </span>
                         </Tooltip>
+                        <Tooltip title={t("cancelPreparing")}>
+                          <IconButton
+                            size="small"
+                            aria-label={t("cancelPreparing")}
+                            onClick={() => expireOrder(associatedOrder.orderId)}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        </>
                       )}
                     </>
                   )}
                 </CardActions>
+                {associatedOrder && (associatedOrder.status === "Pending" || associatedOrder.status === "Processing") && (
+                  <LinearProgress color="warning" sx={{ height: 3 }} />
+                )}
               </Card>
             );
           })

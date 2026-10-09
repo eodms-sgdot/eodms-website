@@ -33,6 +33,7 @@ export class StacSearchService {
   private supportsSearch: boolean = false;
   private _sortingSupportPromise: Promise<void>;
   private _searchSupportPromise: Promise<void>;
+  private abortController: AbortController | null = null;
 
   constructor(stacEndpoint: string, onSortingSupportResolved?: (supports: boolean) => void, 
       onSearchSupportResolved?: (supports: boolean) => void) {
@@ -141,11 +142,17 @@ export class StacSearchService {
 
     headers["Accept"] = "application/geo+json";
 
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
+
     const response = await axios.get<{
       features: STACItem[];
       links: { rel: string; href: string }[];
       numberMatched: number | null;
-    }>(url, { headers, withCredentials: true});
+    }>(url, { headers, withCredentials: true, signal: controller.signal }).finally(() => {
+      if (this.abortController === controller) this.abortController = null;
+    });
 
     this.nextUrl =
       response.data.links?.find((l) => l.rel === "next")?.href ?? null;
@@ -171,14 +178,20 @@ export class StacSearchService {
     await this._sortingSupportPromise;
     await this._searchSupportPromise;
     const initialUrl = this.supportsSearch ? this.buildSearchUrl(params) : this.buildItemsUrl(params);
+    const previous = { urlHistory: this.urlHistory, currentPage: this.currentPage, nextUrl: this.nextUrl };
     this.urlHistory = [initialUrl];
     this.currentPage = 1;
     this.nextUrl = null;
 
-    const response = await this.fetch(initialUrl, headers);
-    this.numberMatched = response.numberMatched;
-
-    return response;
+    try {
+      const response = await this.fetch(initialUrl, headers);
+      this.numberMatched = response.numberMatched;
+      return response;
+    } catch (e) {
+      // Keep paging consistent with the results still on screen.
+      Object.assign(this, previous);
+      throw e;
+    }
   }
 
   /**
@@ -240,6 +253,14 @@ export class StacSearchService {
     this.supportsSorting = false;
     this._sortingSupportPromise = this.checkSortingSupport(onSortingSupportResolved);
     this._searchSupportPromise = this.checkSearchSupport(onSortingSupportResolved);
+  }
+
+  /**
+   * Aborts the in-flight request, if any. The awaiting call rejects with an axios cancel error.
+   */
+  cancel(): void {
+    this.abortController?.abort();
+    this.abortController = null;
   }
 
   /**

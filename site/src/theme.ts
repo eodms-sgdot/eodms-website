@@ -20,7 +20,6 @@ export const lightMode = createTheme({
         root: {
           backgroundColor: "#ffffff",
           color: "#005696",
-          borderBottom: "2px solid #005696",
         },
       },
     },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Backdrop, CircularProgress, Typography } from '@mui/material';
+import { Backdrop, Button, CircularProgress, Typography } from '@mui/material';
 
 export interface LoadingMaskProps {
   loading: boolean;
@@ -7,6 +7,10 @@ export interface LoadingMaskProps {
   opaque?: boolean;
   delayRender?: boolean;
   text?: string;
+  onCancel?: () => void;
+  cancelText?: string;
+  /** Replaces the default spinner. */
+  indicator?: React.ReactNode;
 }
 
 /**
@@ -25,12 +29,17 @@ const LoadingMask: React.FC<LoadingMaskProps> = ({
   opaque = false,
   delayRender = false,
   text,
+  onCancel,
+  cancelText = 'Cancel',
+  indicator,
 }: LoadingMaskProps) => (
   <>
     <Backdrop
       id="Backdrop"
       sx={(backDropTheme) => ({
         color: '#secondary.main',
+        flexDirection: 'column',
+        gap: 2,
         ...(opaque && {
           backgroundColor: 'background.default',
         }),
@@ -42,11 +51,16 @@ const LoadingMask: React.FC<LoadingMaskProps> = ({
       })}
       open={loading}
     >
-      <CircularProgress color="inherit" />
+      {indicator ?? <CircularProgress color="inherit" />}
       {text && (
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
           {text}
         </Typography>
+      )}
+      {onCancel && (
+        <Button variant="contained" color="inherit" onClick={onCancel} sx={{ color: 'text.primary' }}>
+          {cancelText}
+        </Button>
       )}
     </Backdrop>
 

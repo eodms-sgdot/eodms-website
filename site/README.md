@@ -20,9 +20,11 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS STAC
+Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS Search
 service. Production builds retain those relative paths; the production host is
 responsible for serving them.
+
+## Production Build
 
 Build the frontend with:
 
