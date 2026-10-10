@@ -1,10 +1,9 @@
 import { useState, useContext, useEffect, useRef } from 'react';
-import { Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge } from '@mui/material';
+import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
-import LockIcon from '@mui/icons-material/Lock';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutlined';
 import SettingsIcon from '@mui/icons-material/Settings';
-import LockOpenIcon from '@mui/icons-material/LockOpen';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import { AppContext } from '../AppContext';
@@ -24,7 +23,7 @@ import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import OrderPanel from '../components/OrderPanel';
 import OrderReadyNotifier from '../components/OrderReadyNotifier';
 import PreferencesPanel from '../components/PreferencesPanel';
-import { useIsMobile } from '../utils/RenderingUtils';
+import { useIsMobile, getInitials } from '../utils/RenderingUtils';
 import { getItemsExtent } from '../utils/GeometryUtils';
 import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
@@ -479,9 +478,13 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             <Tooltip title={authToken && firstName ? `${t('hello')}${firstName}` : t('provideAuth')}>
               <IconButton
                 onClick={() => { setOpenBlind(null); setIsAuthOpen(!isAuthOpen); }}
-                sx={{ ...barButtonSx(isAuthOpen), ...(authToken && { color: 'success.main' }) }}
+                sx={barButtonSx(isAuthOpen)}
               >
-                {authToken ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+                {authToken ? (
+                  <Avatar sx={{ width: 24, height: 24, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                    {getInitials(username) || <PersonOutlineIcon sx={{ fontSize: 16 }} />}
+                  </Avatar>
+                ) : <PersonOutlineIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
 
@@ -524,20 +527,22 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           </Button>
 
           <Blind open={isAuthOpen} onClose={() => setIsAuthOpen(false)} align="right" width={420}>
-            <Box>
-              {!authToken ? <AuthPanel /> : <LogoutPanel />}
-              <Button
-                fullWidth
-                startIcon={<DescriptionOutlinedIcon />}
-                onClick={() => {
-                  setIsAuthOpen(false);
-                  setManualTermsOpen(true);
-                }}
-                sx={{ justifyContent: 'flex-start', px: 2, mb: 1 }}
-              >
-                {t('termsOfUseTitle')}
-              </Button>
-            </Box>
+            {(() => {
+              const termsLink = (
+                <Button
+                  size="small"
+                  startIcon={<DescriptionOutlinedIcon />}
+                  onClick={() => {
+                    setIsAuthOpen(false);
+                    setManualTermsOpen(true);
+                  }}
+                  sx={{ textTransform: 'none', color: 'text.secondary', ml: -0.5 }}
+                >
+                  {t('termsOfUseTitle')}
+                </Button>
+              );
+              return !authToken ? <AuthPanel footerStart={termsLink} /> : <LogoutPanel footerStart={termsLink} />;
+            })()}
           </Blind>
           <OrderPanel 
             open={isOrdersOpen}

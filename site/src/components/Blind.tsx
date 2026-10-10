@@ -42,6 +42,8 @@ export default function Blind({ open, onClose, align = 'left', width = 640, disa
             display: 'flex',
             flexDirection: 'column',
             borderRadius: '0 0 12px 12px',
+            // Solid paper colour (no dark-mode elevation tint) so content like autofill covers can match it.
+            backgroundImage: 'none',
             // Inset top shadow makes the blind look tucked under the top bar.
             boxShadow: 'inset 0 10px 8px -8px rgba(0,0,0,0.35), 0 10px 24px rgba(0,0,0,0.25)',
           },
