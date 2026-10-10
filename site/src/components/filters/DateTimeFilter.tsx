@@ -62,7 +62,7 @@ const DateTimeFilter: React.FC<DateTimeFilterProps> = ({
     let initStart: string = tmpStart.toISOString().slice(0, -1);
     let initEnd: string =  tmpEnd.toISOString().slice(0, -1);
     
-    if(filterData.value === 'anytime' || filterData.value === '30' || filterData.value === '90' || filterData.value === '365') {
+    if(filterData.value === 'anytime' || filterData.value === '1' || filterData.value === '2' || filterData.value === '30' || filterData.value === '90' || filterData.value === '365') {
         initTemporal = filterData.value as string;
     } 
     else if(filterData.value) {

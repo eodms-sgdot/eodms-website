@@ -29,7 +29,8 @@ export const buildFilter = (filters: FilterValue[]): string => {
                 tokens.push(' ');
                 tokens.push(operation);
                 tokens.push(' \'');
-                tokens.push(value.toString());
+                // CQL2 escapes a single quote inside a string literal by doubling it.
+                tokens.push(value.toString().replace(/'/g, "''"));
                 tokens.push('\' ');
                 first = false;
             }

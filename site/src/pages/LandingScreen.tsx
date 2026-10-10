@@ -1,5 +1,6 @@
 import { useState, useContext, useEffect, useRef } from 'react';
-import { Box, Drawer, IconButton, AppBar, Toolbar, Typography, Button, Popover, Tooltip, Snackbar, Alert, Badge } from '@mui/material';
+import { Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
 import LockIcon from '@mui/icons-material/Lock';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -28,8 +29,23 @@ import { getItemsExtent } from '../utils/GeometryUtils';
 import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
 import { OrbitLoader, SkyBar, TitleCharm } from '../components/OrbitCharm';
+import Blind from '../components/Blind';
+import { BlindContainerContext } from '../components/BlindContainerContext';
 
 const DRAWER_WIDTH = 320;
+// Matches useIsMobile's default so the first render agrees with it.
+const MOBILE_BREAKPOINT = 768;
+
+const barButtonSx = (active: boolean) => ({
+  width: 34,
+  height: 34,
+  borderRadius: 1.5,
+  color: active ? 'primary.main' : 'text.secondary',
+  bgcolor: active ? 'action.selected' : 'transparent',
+  '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 },
+});
+// Side panels cast onto the map and sit tucked under the top bar's shadow.
+const TOP_TUCK_SHADOW = 'inset 0 10px 8px -8px rgba(0,0,0,0.35)';
 
 /**
  * Main application layout and state controller for the GEO.CA STAC Explorer.
@@ -43,11 +59,11 @@ interface LandingScreenProps {
 export default function LandingScreen({ experience }: LandingScreenProps) {
 const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate,
     username, authToken, getValidAuthToken, isAuthOpen, setIsAuthOpen,
-    displayMode, bbox, setBbox, filters, t } = useContext(AppContext)!;
+    displayMode, bbox, setBbox, filters, language, setLanguage, t } = useContext(AppContext)!;
   
-  const [authButtonEl, setAuthButtonEl] = useState<HTMLButtonElement | null>(null);
+  const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches);
   const [rightOpen, setRightOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
@@ -63,6 +79,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
   const [selectedFootprints, setSelectedFootprints] = useState<Record<string, string>>({});
   const [focusedItem, setFocusedItem] = useState<string | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeThumbnails, setActiveThumbnails] = useState<Record<string, string>>({});
 
   const [clearAoiTrigger, setClearAoiTrigger] = useState(0);
@@ -70,16 +87,27 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [supportsSorting, setSupportsSorting] = useState<boolean>(false);
   const [sortby, setSortby] = useState<string>('-datetime');
 
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
+
+  // On phones each panel fills the screen, so only one is open at a time.
+  const showLeftPanel = (open: boolean) => {
+    setLeftOpen(open);
+    if (open && isMobile) setRightOpen(false);
+  };
+  const showRightPanel = (open: boolean) => {
+    setRightOpen(open);
+    if (open && isMobile) setLeftOpen(false);
+  };
   const firstName = username?.trim().split(/\s+/)[0];
 
   /**
    * Calculates the appropriate width for the Search & Result panels
    * @returns the width to set the panels to
    */
-  const calcDrawerWidth = (): number => {
+  const calcDrawerWidth = (): number | string => {
     if(isMobile) {
-      return window.screen.width;
+      // screen.width is the monitor's width, not the viewport's, so narrow desktop windows overflowed.
+      return '100%';
     }
     else {
       return DRAWER_WIDTH
@@ -115,6 +143,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     currentPage: number;
     totalDiscoveredPages: number;
   }>({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
+  // Limit used by the active search, so later changes to the setting don't shift result numbering.
+  const [pageSize, setPageSize] = useState(searchLimit);
+  const resultNumberOffset = (pagingState.currentPage - 1) * pageSize;
+  const [discovered, setDiscovered] = useState({ count: 0, hasMore: false });
 
   /**
    * Creates the applicable headers needed for the STAC API request. 
@@ -141,6 +173,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setSearchResults(result.items);
     setSelectedFootprints({});
     setFocusedItem(null);
+    const throughThisPage = (result.currentPage - 1) * pageSize + result.items.length;
+    setDiscovered(prev => throughThisPage >= prev.count ? { count: throughThisPage, hasMore: result.hasNext } : prev);
     const extent = getItemsExtent(result.items);
     if (extent && zoomToResults) setZoomBounds(extent);
     setPagingState({
@@ -240,6 +274,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     console.log(pagingState);
     setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
     setNumberMatched(null);
+    setDiscovered({ count: 0, hasMore: false });
     searchService.current.reset();
   }; 
 
@@ -273,7 +308,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleMapFeatureClick = (id: string) => {
     setFocusedItem(id);
-    setRightOpen(true); 
+    showRightPanel(true); 
   };
 
   /**
@@ -296,6 +331,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setSelectedFootprints({});
     setActiveThumbnails({});
     setFocusedItem(null);
+    setDiscovered({ count: 0, hasMore: false });
 
     const params: StacSearchParams = {
       ...(searchBbox && { bbox: searchBbox }),
@@ -334,10 +370,11 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
 
     setIsSearching(true);
-    setRightOpen(true);
+    showRightPanel(true);
 
     try {
       const result = await searchService.current.search(params, await getHeaders());
+      setPageSize(params.limit);
       handleSearchResult(result, zoomToResults);
       setNumberMatched(searchService.current.getNumberMatched());
     } catch (e) {
@@ -358,11 +395,34 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     handleSearch(searchBbox);
   };
 
-  const [preferencesAnchorEl, setPreferencesAnchorEl] = useState<HTMLButtonElement | null>(null);
-  const isPreferencesOpen = Boolean(preferencesAnchorEl);
+  const [openBlind, setOpenBlind] = useState<'orders' | 'preferences' | null>(null);
+  const isPreferencesOpen = openBlind === 'preferences';
+  const isOrdersOpen = openBlind === 'orders';
+  const toggleBlind = (blind: 'orders' | 'preferences') => {
+    setIsAuthOpen(false);
+    setOpenBlind(current => current === blind ? null : blind);
+  };
 
-  const [ordersAnchorEl, setOrdersAnchorEl] = useState<HTMLButtonElement | null>(null);
-  const isOrdersOpen = Boolean(ordersAnchorEl);
+  // On phones, the device back button closes whatever panel or blind is covering the map.
+  const overlayOpen = isMobile && (leftOpen || rightOpen || isAuthOpen || openBlind !== null);
+  useEffect(() => {
+    if (!overlayOpen) return;
+    window.history.pushState({ eodmsOverlay: true }, '');
+    const onPopState = () => {
+      // Landing back on one of our own entries (e.g. after a StrictMode remount) isn't a user "back".
+      if (window.history.state?.eodmsOverlay) return;
+      setLeftOpen(false);
+      setRightOpen(false);
+      setIsAuthOpen(false);
+      setOpenBlind(null);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      // Closed from the UI: drop the history entry we added.
+      if (window.history.state?.eodmsOverlay) window.history.back();
+    };
+  }, [overlayOpen, setIsAuthOpen]);
 
   // Load data directly from localStorage
   const getLocalOrdersCount = (): number => {
@@ -380,60 +440,90 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   };
 
   return (
+    <BlindContainerContext.Provider value={contentEl}>
     <Box sx={{ display: 'flex', height: '100vh', width: '100%', flexDirection: 'column', overflow: 'hidden' }}>
       <AppBar position="static" color="default" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1}}>
         <Toolbar variant="dense">
-          <IconButton edge="start" onClick={() => setLeftOpen(!leftOpen)}><MenuIcon /></IconButton>
-          <Typography variant="h6" color="primary" noWrap sx={{ ml: 1, flexShrink: 0 }}>
-            <TitleCharm title={t(experience.titleKey)} />
+          <IconButton edge="start" onClick={() => showLeftPanel(!leftOpen)}><MenuIcon /></IconButton>
+          <Box
+            component="a"
+            href={`https://www.canada.ca/${language}.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ display: 'flex', alignItems: 'center', ml: 1, mr: 1.5, flexShrink: 0 }}
+          >
+            <Box
+              component="img"
+              src={`${import.meta.env.BASE_URL}gc/sig-blk-${language}.svg`}
+              alt={t('governmentOfCanada')}
+              sx={{
+                height: 22,
+                // On narrow screens show only the flag symbol (the left 155 of 819 viewBox units).
+                width: isMobile ? Math.round(22 * 155.4 / 75.97) : Math.round(22 * 819 / 75.97),
+                objectFit: 'cover',
+                objectPosition: 'left',
+                // Official all-white monochrome form on dark backgrounds.
+                filter: displayMode === 'dark' ? 'brightness(0) invert(1)' : 'none',
+              }}
+            />
+          </Box>
+          <Divider orientation="vertical" flexItem variant="middle" sx={{ mr: 1.5 }} />
+          <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 0 }}>
+            <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
           </Typography>
 
           {/* empty to make widgets below align right */}
           <Box sx={{ flexGrow: 1 }}></Box>
           
-          <Box sx={{ display: 'flex', alignItems: 'right'}}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, p: '2px', border: 1, borderColor: 'divider', borderRadius: 2 }}>
             <Tooltip title={authToken && firstName ? `${t('hello')}${firstName}` : t('provideAuth')}>
-              <Button ref={setAuthButtonEl} variant={authToken ? "contained" : "outlined"} color={authToken ? "success" : "primary"} onClick={() => setIsAuthOpen(!isAuthOpen)} sx={{ minWidth: '40px'}}>
-                {authToken ? <LockOpenIcon /> : <LockIcon />}
-              </Button>
+              <IconButton
+                onClick={() => { setOpenBlind(null); setIsAuthOpen(!isAuthOpen); }}
+                sx={{ ...barButtonSx(isAuthOpen), ...(authToken && { color: 'success.main' }) }}
+              >
+                {authToken ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+              </IconButton>
             </Tooltip>
 
             {username && (
               <Tooltip title={t('viewActiveProcessing')}>
-                <IconButton 
-                  onClick={(e) => setOrdersAnchorEl(e.currentTarget)} 
-                  color={isOrdersOpen ? "primary" : "default"}
-                  sx={{ ml: 0.5 }}
-                >
+                <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)}>
                   <Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}>
-                    <ShoppingBagIcon />
+                    <ShoppingBagIcon fontSize="small" />
                   </Badge>
                 </IconButton>
               </Tooltip>
             )}
 
             <Tooltip title={t('preferences')}>
-                <IconButton 
-                  onClick={(e) => setPreferencesAnchorEl(e.currentTarget)} 
-                  color={isPreferencesOpen ? "primary" : "default"}
-                >
-                <SettingsIcon />
+              <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)}>
+                <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
 
             <PreferencesPanel 
-              anchorEl={preferencesAnchorEl} 
-              onClose={() => setPreferencesAnchorEl(null)}
+              open={isPreferencesOpen} 
+              onClose={() => setOpenBlind(null)}
             />
 
             <Tooltip title={t('toggleResults')}>
-              <IconButton onClick={() => setRightOpen(!rightOpen)} color={rightOpen ? "primary" : "default"}>
-                <Badge badgeContent={searchResults.length} color="secondary" max={999}><ViewSidebarIcon /></Badge>
+              <IconButton onClick={() => showRightPanel(!rightOpen)} sx={barButtonSx(rightOpen)}>
+                <Badge badgeContent={discovered.count > 0 ? `${discovered.count}${discovered.hasMore ? '…' : ''}` : 0} color="secondary"><ViewSidebarIcon fontSize="small" /></Badge>
               </IconButton>
             </Tooltip>
           </Box>
 
-          <Popover open={isAuthOpen} anchorEl={authButtonEl} onClose={() => setIsAuthOpen(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+          <Button
+            size="small"
+            lang={language === 'en' ? 'fr' : 'en'}
+            aria-label={language === 'en' ? 'Français' : 'English'}
+            onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
+            sx={{ ml: 1.5, minWidth: 0, textTransform: 'none', textDecoration: 'underline', fontWeight: 400 }}
+          >
+            {isMobile ? (language === 'en' ? 'FR' : 'EN') : (language === 'en' ? 'Français' : 'English')}
+          </Button>
+
+          <Blind open={isAuthOpen} onClose={() => setIsAuthOpen(false)} align="right" width={420}>
             <Box>
               {!authToken ? <AuthPanel /> : <LogoutPanel />}
               <Button
@@ -448,18 +538,18 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
                 {t('termsOfUseTitle')}
               </Button>
             </Box>
-          </Popover>
+          </Blind>
           <OrderPanel 
-            anchorEl={ordersAnchorEl}
-            onClose={() => setOrdersAnchorEl(null)}
+            open={isOrdersOpen}
+            onClose={() => setOpenBlind(null)}
           />
         </Toolbar>
         <SkyBar />
       </AppBar>
 
       <LoadingMask loading={isSearching} indicator={<OrbitLoader />} onCancel={() => searchService.current.cancel()} cancelText={t('cancel')}>
-        <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
-          <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative' } }}>
+        <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
+          <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
               stacEndpoint={stacEndpoint} fixedCollectionId={experience.fixedCollectionId}
               selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
@@ -470,6 +560,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           </Drawer>
           <Box sx={{ 
             flexGrow: 1, 
+            minWidth: 0,
             position: 'relative',
             '& .leaflet-container': {
               backgroundColor: displayMode == 'dark'
@@ -506,14 +597,27 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           }}>
             <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox, false); }} zoomBounds={zoomBounds} 
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
+              hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} setBbox={setBbox}
             />
+            {isMobile && !leftOpen && !rightOpen && (
+              <Fab
+                variant="extended"
+                color="primary"
+                onClick={() => showLeftPanel(true)}
+                sx={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', zIndex: 1001, textTransform: 'none' }}
+              >
+                <SearchIcon sx={{ mr: 1 }} />
+                {t('search')}
+              </Fab>
+            )}
           </Box>
-          <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative' } }}>
+          <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <ResultsPanel 
               results={searchResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} 
               isSearching={isSearching} selectedFootprints={selectedFootprints}
               onToggleFootprint={handleToggleFootprint} focusedItem={focusedItem} 
+              hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onClear={handleOnResultsClear}
               hasNext={pagingState.hasNext} hasPrevious={pagingState.hasPrevious} 
               currentPage={pagingState.currentPage} totalDiscoveredPages={pagingState.totalDiscoveredPages} 
@@ -536,5 +640,6 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         onManualClose={() => setManualTermsOpen(false)}
       />
     </Box>
+    </BlindContainerContext.Provider>
   );
 }

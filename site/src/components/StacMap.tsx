@@ -1,7 +1,8 @@
-import { useEffect, useRef, useContext, useState } from 'react';
-import { MapContainer, TileLayer, useMap, GeoJSON } from 'react-leaflet'; 
+import { useEffect, useMemo, useRef, useContext, useState } from 'react';
+import { MapContainer, TileLayer, useMap, GeoJSON, Marker } from 'react-leaflet'; 
 import L, { LatLng, type LeafletEvent } from 'leaflet';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, TextField } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, GlobalStyles, TextField } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import { AppContext } from '../AppContext';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
@@ -35,6 +36,12 @@ interface StacMapProps {
   selectedFootprints?: Record<string, string>;
   /** Callback fired when a user clicks on a rendered GeoJSON footprint */
   onFeatureClick?: (id: string) => void;
+  /** The ID of the item currently hovered on the map or in the results list */
+  hoveredItem?: string | null;
+  /** Callback fired when the pointer enters or leaves a footprint */
+  onHoverItem?: (id: string | null) => void;
+  /** Added to each result's list position to number it across pages */
+  numberOffset?: number;
   /** Dictionary mapping STAC Item IDs to the URL of their active thumbnail image */
   activeThumbnails?: Record<string, string>;
   /** Used to clear the current AOI */
@@ -71,6 +78,8 @@ function MapZoomController({ bounds }: { bounds?: [number, number, number, numbe
   const map = useMap();
   useEffect(() => {
     if (bounds) {
+      // On mobile the results panel closes in the same update, so the map was 0px wide until now.
+      map.invalidateSize({ animate: false });
       map.fitBounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]], { padding: [50, 50], animate: true });
     }
   }, [bounds, map]);
@@ -155,6 +164,66 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
   return null;
 }
 
+const POINT_BUFFER_DEG = 0.1;
+
+/**
+ * Drops a crosshair with a "Search here" chip wherever the user clicks on empty map.
+ * Ignores clicks that finish a draw, edit or delete gesture.
+ */
+function ClickToSearch({ onSearchHere, label, color }: { onSearchHere: (longitude: number, latitude: number) => void; label: string; color: string }) {
+  const map = useMap();
+  const [point, setPoint] = useState<LatLng | null>(null);
+
+  const icon = useMemo(() => L.divIcon({
+    className: 'stac-search-here',
+    // Zero size so the crosshair centre sits exactly on the clicked point.
+    iconSize: [0, 0],
+    html: `<span class="target" style="color:${color}"><svg width="28" height="28" viewBox="-14 -14 28 28" fill="none" stroke="currentColor" stroke-width="2">`
+      + `<circle class="pulse" r="8"/><circle r="8" fill="rgba(255,255,255,0.35)"/>`
+      + `<path d="M0 -13V-9M0 9V13M-13 0H-9M9 0H13"/><circle r="1.5" fill="currentColor" stroke="none"/></svg></span>`
+      + `<span class="chip" style="background:${color}">${label} &rarr;</span>`,
+  }), [label, color]);
+
+  useEffect(() => {
+    let toolActive = false;
+    let toolStoppedAt = 0;
+    const onToolStart = () => { toolActive = true; setPoint(null); };
+    const onToolStop = () => { toolActive = false; toolStoppedAt = Date.now(); };
+    // The click that ends a rectangle drag arrives just after draw:drawstop.
+    const onClick = (e: L.LeafletMouseEvent) => {
+      if (!toolActive && Date.now() - toolStoppedAt > 300) setPoint(e.latlng.wrap());
+    };
+    const onKeyDown = (e: L.LeafletKeyboardEvent) => {
+      if (e.originalEvent.key === 'Escape') setPoint(null);
+    };
+
+    const startEvents = [L.Draw.Event.DRAWSTART, L.Draw.Event.EDITSTART, L.Draw.Event.DELETESTART];
+    const stopEvents = [L.Draw.Event.DRAWSTOP, L.Draw.Event.EDITSTOP, L.Draw.Event.DELETESTOP];
+    startEvents.forEach(ev => map.on(ev, onToolStart));
+    stopEvents.forEach(ev => map.on(ev, onToolStop));
+    map.on('click', onClick);
+    map.on('keydown', onKeyDown);
+    return () => {
+      startEvents.forEach(ev => map.off(ev, onToolStart));
+      stopEvents.forEach(ev => map.off(ev, onToolStop));
+      map.off('click', onClick);
+      map.off('keydown', onKeyDown);
+    };
+  }, [map]);
+
+  if (!point) return null;
+  return (
+    <Marker
+      position={point}
+      icon={icon}
+      title={label}
+      alt={label}
+      zIndexOffset={2000}
+      eventHandlers={{ click: () => { onSearchHere(point.lng, point.lat); setPoint(null); } }}
+    />
+  );
+}
+
 function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selectedProvider}: {
   onLocationSelected: (bbox: [number, number, number, number]) => void;
   searchLabel: string;
@@ -223,7 +292,69 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
  * * @param {StacMapProps} props - The properties applied to the map.
  * @returns {JSX.Element} The rendered React-Leaflet MapContainer.
  */
-export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = {}, onFeatureClick, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
+const FOOTPRINT_STAGGER_MS = 35;
+const FOOTPRINT_STAGGER_MAX_MS = 700;
+// Reusing icon instances stops Leaflet re-rendering chips (and replaying their animation) on every render.
+const chipIconCache = new Map<string, L.DivIcon>();
+
+const footprintStyles = (
+  <GlobalStyles styles={{
+    '@keyframes stacFootprintIn': {
+      from: { opacity: 0, transform: 'scale(0.85)' },
+      to: { opacity: 1, transform: 'none' },
+    },
+    '.stac-footprint': {
+      transformBox: 'fill-box',
+      transformOrigin: 'center',
+      animation: 'stacFootprintIn 450ms cubic-bezier(0.2, 0.8, 0.2, 1.2) both',
+      transition: 'fill-opacity 150ms ease, stroke-opacity 150ms ease, stroke-width 150ms ease',
+    },
+    '.stac-footprint-chip span': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      height: '100%',
+      borderRadius: '12px',
+      border: '2px solid #fff',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+      font: '700 12px/1 "Helvetica Neue", Helvetica, Arial, sans-serif',
+      animation: 'stacFootprintIn 250ms ease-out both',
+    },
+    '@keyframes stacSearchPulse': {
+      from: { transform: 'scale(1)', opacity: 0.8 },
+      to: { transform: 'scale(2.2)', opacity: 0 },
+    },
+    '.stac-search-here': { overflow: 'visible', cursor: 'pointer' },
+    '.stac-search-here .target': { position: 'absolute', left: -14, top: -14, width: 28, height: 28, display: 'block' },
+    '.stac-search-here .pulse': { transformBox: 'fill-box', transformOrigin: 'center', animation: 'stacSearchPulse 1.6s ease-out infinite' },
+    '.stac-search-here .chip': {
+      position: 'absolute',
+      left: 18,
+      top: -13,
+      height: 26,
+      padding: '0 10px',
+      display: 'flex',
+      alignItems: 'center',
+      borderRadius: 13,
+      color: '#fff',
+      whiteSpace: 'nowrap',
+      font: '600 13px/1 "Helvetica Neue", Helvetica, Arial, sans-serif',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+      transformOrigin: 'left center',
+      animation: 'stacFootprintIn 200ms ease-out both',
+      transition: 'filter 120ms ease',
+    },
+    '.stac-search-here:hover .chip, .stac-search-here:focus-visible .chip': { filter: 'brightness(1.15)' },
+    '@media (prefers-reduced-motion: reduce)': {
+      '.stac-footprint, .stac-footprint-chip span, .stac-search-here .chip, .stac-search-here .pulse': { animation: 'none', transition: 'none' },
+    },
+  }} />
+);
+
+export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = {}, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
+  const theme = useTheme();
+  const brandColor = theme.palette.primary.main;
   const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup());
   const { language, locationSearchProvider, baseMapLayer, t } = useContext(AppContext)!; 
   const [coordinateDialogOpen, setCoordinateDialogOpen] = useState(false);
@@ -239,28 +370,38 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
   const handleCoordinateSubmit = () => {
     const coordinates = coordinateValues.map(value => value.trim() === '' ? NaN : Number(value));
     const [longitude, latitude] = coordinates;
-    const buffer = 0.1;
+    const buffer = POINT_BUFFER_DEG;
     if (!coordinates.every(Number.isFinite) || longitude < -180 + buffer || longitude > 180 - buffer || latitude < -90 + buffer || latitude > 90 - buffer) {
       setCoordinateError(true);
       return;
     }
 
+    setCoordinateDialogOpen(false);
+    searchAroundPoint(longitude, latitude, true);
+  };
+
+  const searchAroundPoint = (longitude: number, latitude: number, zoom: boolean) => {
+    const buffer = POINT_BUFFER_DEG;
+    const clamp = (value: number, limit: number) => Math.min(Math.max(value, -limit + buffer), limit - buffer);
+    const lon = clamp(longitude, 180);
+    const lat = clamp(latitude, 90);
     const bbox: [number, number, number, number] = [
-      Number((longitude - buffer).toFixed(10)),
-      Number((latitude - buffer).toFixed(10)),
-      Number((longitude + buffer).toFixed(10)),
-      Number((latitude + buffer).toFixed(10)),
+      Number((lon - buffer).toFixed(10)),
+      Number((lat - buffer).toFixed(10)),
+      Number((lon + buffer).toFixed(10)),
+      Number((lat + buffer).toFixed(10)),
     ];
     const rectangle = L.rectangle([[bbox[1], bbox[0]], [bbox[3], bbox[2]]]);
     drawnItemsRef.current?.clearLayers();
     drawnItemsRef.current?.addLayer(rectangle);
     setBbox(bbox.join(','));
-    setCoordinateZoomBounds(bbox);
-    setCoordinateDialogOpen(false);
+    if (zoom) setCoordinateZoomBounds(bbox);
     onAoiDrawn(bbox);
   };
   
   return (
+    <>
+    {footprintStyles}
     <MapContainer center={[56.13, -106.34]} zoom={4} style={{ height: '100%', width: '100%' }}>
       { baseMapLayer ? (
         baseMapLayer.type === "tile" ? (
@@ -279,6 +420,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController bounds={zoomBounds} />
       <MapZoomController bounds={coordinateZoomBounds} />
+      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} label={t('searchHere')} color={brandColor} />
 
       <Dialog open={coordinateDialogOpen} onClose={() => setCoordinateDialogOpen(false)}>
         <DialogTitle>{t('coordinateEntry')}</DialogTitle>
@@ -305,15 +447,62 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
         </DialogActions>
       </Dialog>
 
-      {searchResults.map(item => {
+      {searchResults.map((item, index) => {
         const isSelected = !!selectedFootprints[item.id];
-        const color = isSelected ? selectedFootprints[item.id] : '#888888';
+        const isHovered = item.id === hoveredItem;
+        const color = isSelected ? selectedFootprints[item.id] : brandColor;
+        const style: L.PathOptions = { className: 'stac-footprint', ...(isSelected
+          ? { color, weight: isHovered ? 4 : 3, opacity: 0.9, fillColor: color, fillOpacity: isHovered ? 0.35 : 0.25 }
+          : isHovered
+            ? { color, weight: 2, opacity: 1, fillColor: color, fillOpacity: 0.25 }
+            : { color, weight: 1, opacity: 0.3, fillColor: color, fillOpacity: 0.08 }) };
+        const delay = Math.min(index * FOOTPRINT_STAGGER_MS, FOOTPRINT_STAGGER_MAX_MS);
         return (
           <GeoJSON
-            key={`footprint-${item.id}-${isSelected}`}
+            key={`footprint-${item.id}`}
             data={item}
-            style={{ color, weight: isSelected ? 3 : 1, opacity: 0.6, fillColor: color, fillOpacity: isSelected ? 0.3 : 0.05 }}
-            onEachFeature={(_, layer) => { layer.on('click', () => onFeatureClick?.(item.id)); }}
+            style={style}
+            onEachFeature={(_, layer) => {
+              layer.on('add', () => {
+                const el = (layer as L.Path).getElement() as SVGElement | undefined;
+                if (el) el.style.animationDelay = `${delay}ms`;
+              });
+            }}
+            eventHandlers={{
+              click: (e) => { L.DomEvent.stopPropagation(e); onFeatureClick?.(item.id); },
+              mouseover: () => onHoverItem?.(item.id),
+              mouseout: () => onHoverItem?.(null),
+            }}
+          />
+        );
+      })}
+
+      {searchResults.map((item, index) => {
+        const isSelected = !!selectedFootprints[item.id];
+        if ((!isSelected && item.id !== hoveredItem) || !item.geometry) return null;
+        const color = isSelected ? selectedFootprints[item.id] : brandColor;
+        const number = numberOffset + index + 1;
+        const iconKey = `${number}|${color}`;
+        let icon = chipIconCache.get(iconKey);
+        if (!icon) {
+          icon = L.divIcon({
+            className: 'stac-footprint-chip',
+            html: `<span style="background:${color};color:${theme.palette.getContrastText(color)}">${number}</span>`,
+            iconSize: [number >= 100 ? 32 : 24, 24],
+          });
+          chipIconCache.set(iconKey, icon);
+        }
+        return (
+          <Marker
+            key={`chip-${item.id}-${isSelected}`}
+            position={L.geoJSON(item).getBounds().getCenter()}
+            icon={icon}
+            interactive={isSelected}
+            eventHandlers={{
+              click: () => onFeatureClick?.(item.id),
+              mouseover: () => onHoverItem?.(item.id),
+              mouseout: () => onHoverItem?.(null),
+            }}
           />
         );
       })}
@@ -337,5 +526,6 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
         }
       })}
     </MapContainer>
+    </>
   );
 }

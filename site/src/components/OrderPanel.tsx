@@ -5,7 +5,9 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  Popover,
+  ButtonBase,
+  Collapse,
+  Link,
   Tooltip,
   IconButton,
 } from "@mui/material";
@@ -14,25 +16,26 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import DownloadIcon from "@mui/icons-material/Download";
 import ReplayIcon from "@mui/icons-material/Replay";
-import { useContext, useState } from "react";
+import CloseIcon from "@mui/icons-material/Close";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Fragment, useContext, useState } from "react";
 import { AppContext } from "../AppContext";
+import Blind from "./Blind";
 
 interface OrderPanelProps {
-  /** The anchor element controlling the popover visibility */
-  anchorEl: HTMLButtonElement | null;
-  /** The Callback fired when clicking outside the popover to close it */
+  open: boolean;
   onClose: () => void;
 }
 
 export default function OrderPanel({
-  anchorEl,
+  open,
   onClose,
 }: OrderPanelProps) {
 
-  const isOpen = Boolean(anchorEl);
   const { username, language, expireOrder, triggerNewOrder, t } = useContext(AppContext)!;
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   const handleRetry = async (order: OrderInfo) => {
     const key = order.collection + order.itemIds.join();
@@ -143,7 +146,28 @@ export default function OrderPanel({
   }) {
     switch (order.status) {
       case "Available":
-        return (
+        return order.downloadUrl ? (
+          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+            <ButtonBase
+              onClick={() => handleDownload(order)}
+              sx={{
+                typography: "caption",
+                fontWeight: "bold",
+                px: 1,
+                py: 0.5,
+                gap: 0.5,
+                borderRadius: "4px",
+                bgcolor: "#e8f5e9",
+                color: "success.main",
+                whiteSpace: "nowrap",
+                "&:hover, &.Mui-focusVisible": { bgcolor: "#c8e6c9" },
+              }}
+            >
+              <DownloadIcon sx={{ fontSize: 14 }} />
+              {t("download")}
+            </ButtonBase>
+          </Box>
+        ) : (
           <Box
             sx={{
               display: "flex",
@@ -166,13 +190,6 @@ export default function OrderPanel({
             >
               {t("statusAvailable")}
             </Typography>
-            {order.downloadUrl && (
-              <Tooltip title={t("download")}>
-                <IconButton size="small" color="success" onClick={() => handleDownload(order)}>
-                  <DownloadIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
           </Box>
         );
 
@@ -226,6 +243,7 @@ export default function OrderPanel({
 
       case "Processing":
         return (
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0.5 }}>
           <Typography
             variant="caption"
             sx={{
@@ -239,11 +257,14 @@ export default function OrderPanel({
           >
             {t("statusProcessing")}
           </Typography>
+          <CancelOrderButton order={order} />
+          </Box>
         );
 
       case "Pending":
       default:
         return (
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0.5 }}>
           <Typography
             variant="caption"
             sx={{
@@ -257,23 +278,61 @@ export default function OrderPanel({
           >
             {t("statusPending")}
           </Typography>
+          <CancelOrderButton order={order} />
+          </Box>
         );
     }
   }
 
+  function CancelOrderButton({ order }: { order: OrderInfo }) {
+    return (
+      <Tooltip title={t("cancelPreparing")}>
+        <IconButton size="small" aria-label={t("cancelPreparing")} onClick={() => expireOrder(order.orderId)}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    );
+  }
+
   const localOrders = getLocalOrders();
 
+  const formatDate = (iso: string) => new Date(iso).toLocaleString(language, {
+    timeZone: 'UTC',
+    timeZoneName: 'short',
+    hour12: false,
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  /** Every known field of an order, skipping empty ones. The raw download URL is signed, so only its expiry is shown. */
+  const getOrderDetails = (order: OrderInfo): [string, string][] => {
+    const expires = order.downloadUrl ? new URL(order.downloadUrl).searchParams.get("Expires") : null;
+    const rows: [string, string | number | undefined | null][] = [
+      [t("orderId"), order.orderId],
+      [t("requestId"), order.requestId],
+      [t("currentStatus"), order.serverStatus && order.serverStatus !== order.status ? `${order.status} (${order.serverStatus})` : order.status],
+      [t("collection"), order.collection],
+      [t("itemId"), order.itemIds.join(", ")],
+      [t("orderKey"), order.orderKeys?.join(", ")],
+      [t("fileFormat"), order.format],
+      [t("dateOrdered"), order.orderDate && formatDate(order.orderDate)],
+      [t("lastUpdated"), order.lastUpdate && formatDate(order.lastUpdate)],
+      [t("nextCheck"), order.nextCheckAt && formatDate(order.nextCheckAt)],
+      [t("linkExpires"), expires && Number.isFinite(Number(expires)) ? formatDate(new Date(Number(expires) * 1000).toISOString()) : undefined],
+      [t("statusCode"), order.code],
+      [t("statusMessage"), order.message],
+      [t("errorDetails"), order.error],
+    ];
+    return rows.filter((row): row is [string, string | number] => row[1] !== undefined && row[1] !== null && row[1] !== "")
+      .map(([label, value]) => [label, String(value)]);
+  };
+
   return (
-    <Popover
-      open={isOpen}
-      anchorEl={anchorEl}
-      onClose={onClose}
-      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-      transformOrigin={{ vertical: "top", horizontal: "right" }}
-      disableAutoFocus={true}
-      disableEnforceFocus={true}
-    >
-      <Box sx={{ p: 1, width: "90vw", maxWidth: 600, maxHeight: 800, overflowY: "scroll" }}>
+    <Blind open={open} onClose={onClose} align="right" width={600} disableEnforceFocus>
+      <Box sx={{ px: 1, pb: 1 }}>
         <Typography variant="h6" color="primary" gutterBottom>{t('orderHistory')}</Typography>
         {localOrders.length === 0 ? (
           <Typography
@@ -286,8 +345,12 @@ export default function OrderPanel({
         ) : (
           <Table size="small">
             <TableBody>
-              {localOrders.map((order: OrderInfo, idx: number) => (
-                <TableRow key={order.orderId || order.requestId || idx} hover>
+              {localOrders.map((order: OrderInfo, idx: number) => {
+                const rowKey = order.orderId || order.requestId || String(idx);
+                const isExpanded = expandedOrder === rowKey;
+                return (
+                <Fragment key={rowKey}>
+                <TableRow hover sx={{ '& > td': { borderBottom: isExpanded ? 0 : undefined } }}>
                   <TableCell
                     sx={{
                       p: 1,
@@ -298,14 +361,6 @@ export default function OrderPanel({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      component="div"
-                      sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                      <strong>{t("requestId")}:</strong> {order.requestId}
-                    </Typography>
                     <Typography
                       variant="body2"
                       color="text.secondary"
@@ -329,16 +384,7 @@ export default function OrderPanel({
                         component="div"
                         sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
                       >
-                        <strong>{t("dateOrdered")}:</strong> {new Date(order.orderDate).toLocaleString(language, {
-                          timeZone: 'UTC',
-                          timeZoneName: 'short',
-                          hour12: false,
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        <strong>{t("dateOrdered")}:</strong> {formatDate(order.orderDate)}
                       </Typography>
                     )}
                     {order.orderKeys && order.orderKeys.length > 0 && (
@@ -405,6 +451,16 @@ export default function OrderPanel({
                         </Tooltip>
                       </Box>
                     )}
+                    <Link
+                      component="button"
+                      variant="caption"
+                      aria-expanded={isExpanded}
+                      onClick={() => setExpandedOrder(isExpanded ? null : rowKey)}
+                      sx={{ display: "inline-flex", alignItems: "center", mt: 0.25 }}
+                    >
+                      {isExpanded ? t("hideDetails") : t("showDetails")}
+                      <ExpandMoreIcon sx={{ fontSize: 16, transition: "transform 150ms", transform: isExpanded ? "rotate(180deg)" : "none" }} />
+                    </Link>
                   </TableCell>
                   <TableCell
                     align="right"
@@ -421,11 +477,27 @@ export default function OrderPanel({
                     </Box>
                   </TableCell>
                 </TableRow>
-              ))}
+                <TableRow>
+                  <TableCell colSpan={2} sx={{ py: 0, px: 1, ...(!isExpanded && { borderBottom: 0 }) }}>
+                    <Collapse in={isExpanded} unmountOnExit>
+                      <Box component="dl" sx={{ display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: 2, rowGap: 0.5, m: 0, pb: 1.5, typography: "caption" }}>
+                        {getOrderDetails(order).map(([label, value]) => (
+                          <Fragment key={label}>
+                            <Box component="dt" sx={{ fontWeight: "bold", color: "text.secondary" }}>{label}</Box>
+                            <Box component="dd" sx={{ m: 0, wordBreak: "break-all" }}>{value}</Box>
+                          </Fragment>
+                        ))}
+                      </Box>
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+                </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         )}
       </Box>
-    </Popover>
+    </Blind>
   );
 }

@@ -23,6 +23,7 @@ import {
   Link,
   LinearProgress,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
 import CloseIcon from "@mui/icons-material/Close";
 import type { STACItem } from "../types";
@@ -57,6 +58,29 @@ const readyPulse = keyframes`
   100% { box-shadow: 0 0 0 10px rgba(46, 125, 50, 0); }
 `;
 
+/**
+ * The order service reports no percentage, so progress is staged by status and
+ * eases toward the end of each stage the longer the order takes.
+ */
+const estimateOrderProgress = (status: string, orderDate: string | undefined, now: number) => {
+  const elapsed = orderDate ? Math.max(0, now - Date.parse(orderDate)) : 0;
+  const ease = (from: number, to: number) => from + (to - from) * (1 - Math.exp(-elapsed / 90_000));
+  return status === "Processing" ? ease(40, 92) : ease(12, 38);
+};
+
+const inButtonProgressSx = { overflow: "hidden" };
+
+/** A thin bar along the bottom edge of a button; indeterminate when no value is given. */
+const ButtonProgress = ({ value, color }: { value?: number; color: "primary" | "warning" | "success" | "error" }) => (
+  <LinearProgress
+    aria-hidden
+    color={color}
+    variant={value === undefined ? "indeterminate" : "determinate"}
+    value={value}
+    sx={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3 }}
+  />
+);
+
 const formatElapsed = (ms: number) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
@@ -80,6 +104,12 @@ interface ResultsPanelProps {
   onToggleFootprint: (item: STACItem) => void;
   /** The ID of the item currently clicked/focused on the map */
   focusedItem: string | null;
+  /** The ID of the item currently hovered on the map or in this list */
+  hoveredItem: string | null;
+  /** Callback fired when the pointer enters or leaves a result card */
+  onHoverItem: (id: string | null) => void;
+  /** Added to each result's list position to number it across pages */
+  numberOffset: number;
   /** Dictionary tracking which STAC Items have their map thumbnails active */
   activeThumbnails: Record<string, string>;
   /** Callback fired when a user toggles the image overlay button */
@@ -126,6 +156,9 @@ export default function ResultsPanel({
   selectedFootprints,
   onToggleFootprint,
   focusedItem,
+  hoveredItem,
+  onHoverItem,
+  numberOffset,
   activeThumbnails,
   onToggleThumbnail,
   onClear,
@@ -140,6 +173,8 @@ export default function ResultsPanel({
   userId
 }: ResultsPanelProps) {
   const [activeMetadata, setActiveMetadata] = useState<STACItem | null>(null);
+  const theme = useTheme();
+  const brandColor = theme.palette.primary.main;
   const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint} = useContext(AppContext)!;
   
   // Tracks multiple item IDs currently ordered. 
@@ -347,9 +382,10 @@ export default function ResultsPanel({
             {t("noResults")}
           </Typography>
         ) : (
-          results.map((item) => {
-            const itemColor = selectedFootprints[item.id] || "#005696";
+          results.map((item, index) => {
+            const itemColor = selectedFootprints[item.id] || brandColor;
             const isSelected = !!selectedFootprints[item.id];
+            const isHovered = item.id === hoveredItem;
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
             const thumbUrl = buildThumbUrl(item);
@@ -369,13 +405,43 @@ export default function ResultsPanel({
               <Card
                 key={item.id}
                 id={`result-card-${item.id}`}
+                onMouseEnter={() => onHoverItem(item.id)}
+                onMouseLeave={() => onHoverItem(null)}
                 sx={{
                   mb: 2,
+                  position: "relative",
                   borderRadius: 0,
                   borderLeft: `4px solid ${itemColor}`,
-                  bgcolor: isFocused ? "#e3f2fd" : "white",
+                  bgcolor: isFocused ? alpha(brandColor, 0.1) : "white",
+                  boxShadow: isHovered ? `0 0 0 2px ${alpha(itemColor, 0.6)}` : undefined,
+                  transition: "box-shadow 150ms ease",
                 }}
               >
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: "absolute",
+                    top: 6,
+                    left: 6,
+                    zIndex: 1,
+                    minWidth: 24,
+                    height: 24,
+                    px: 0.5,
+                    borderRadius: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "2px solid #fff",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    pointerEvents: "none",
+                    bgcolor: isSelected || isHovered ? itemColor : alpha(brandColor, 0.75),
+                    color: theme.palette.getContrastText(itemColor),
+                  }}
+                >
+                  {numberOffset + index + 1}
+                </Box>
                 <Tooltip title={isThumbnailActive ? t("hideMapHover") : t("showMapHover")}>
                   <CardActionArea
                     disabled={!thumbUrl}
@@ -489,8 +555,10 @@ export default function ResultsPanel({
                             startIcon={<Inventory2Icon />}
                             disabled={isItemLoading}
                             onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
+                            sx={inButtonProgressSx}
                           >
                             {isItemLoading ? t("requesting") : t("orderZip")}
+                            {isItemLoading && <ButtonProgress color="primary" />}
                           </Button>
                         </Tooltip>
                       ) : associatedOrder.status === "Available" ? (
@@ -515,11 +583,13 @@ export default function ResultsPanel({
                               onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
                               onAnimationEnd={() => setJustReady(prev => { const next = new Set(prev); next.delete(associatedOrder.orderId); return next; })}
                               sx={{
+                                ...inButtonProgressSx,
                                 animation: justReady.has(associatedOrder.orderId) ? `${readyPulse} 1.2s ease-out 3` : "none",
                                 "@media (prefers-reduced-motion: reduce)": { animation: "none" },
                               }}
                             >
                               {t("download") + filesize}
+                              {justReady.has(associatedOrder.orderId) && <ButtonProgress value={100} color="success" />}
                             </Button>
                           </Tooltip>
                         )
@@ -534,8 +604,10 @@ export default function ResultsPanel({
                               startIcon={<ReplayIcon />}
                               disabled={isItemLoading}
                               onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
+                              sx={inButtonProgressSx}
                         >
                             {isItemLoading ? t("requesting") : t("retryOrder")}
+                            <ButtonProgress value={isItemLoading ? undefined : 100} color={isItemLoading ? "primary" : "error"} />
                             </Button>
                           </span>
                         </Tooltip>
@@ -550,9 +622,11 @@ export default function ResultsPanel({
                               color="warning"
                               disabled
                               startIcon={<HourglassEmptyIcon />}
+                              sx={inButtonProgressSx}
                             >
                               {t("preparing")}
                               {associatedOrder.orderDate && ` ${formatElapsed(now - Date.parse(associatedOrder.orderDate))}`}
+                              <ButtonProgress color="warning" value={estimateOrderProgress(associatedOrder.status, associatedOrder.orderDate, now)} />
                             </Button>
                           </span>
                         </Tooltip>
@@ -570,9 +644,6 @@ export default function ResultsPanel({
                     </>
                   )}
                 </CardActions>
-                {associatedOrder && (associatedOrder.status === "Pending" || associatedOrder.status === "Processing") && (
-                  <LinearProgress color="warning" sx={{ height: 3 }} />
-                )}
               </Card>
             );
           })

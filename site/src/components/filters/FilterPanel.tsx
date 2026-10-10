@@ -60,7 +60,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         filters,
         setFilters,
         authToken,
-        bbox,
         t
     } = useContext(AppContext)!;
 
@@ -140,28 +139,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     if(queryablesUrl) {
                         const queryables:Record<string, STACQueryable> = await getQueryables(queryablesUrl, authToken);
                         queryablesMap.set(collectionName, queryables);
-                        let collectionValuesMap = valuesMap.get(collectionName);
-
-                        if(!collectionValuesMap) {
-                            collectionValuesMap = new Map<string, FilterValue[]>();
-                            valuesMap.set(collectionName, collectionValuesMap)
-                        }
-
-                        Object.entries(queryables).map(([qName, queryable]) => {
-                            if(queryable) {
-                                let filterList = collectionValuesMap.get(qName);
-                                
-                                if(!filterList) {
-                                    filterList = [];
-                                    collectionValuesMap.set(qName, filterList);
-                                }
-
-                                if(filterList.length === 0) {
-                                    const newFilter: FilterValue = {id: `${qName}-0`, fieldKey: qName};
-                                    filterList.push(newFilter);
-                                }
-                            }
-                        });
                     }
                 }
             } 
@@ -174,7 +151,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         };
 
         fetchFilters();
-    }, [stacEndpoint, authToken, selectedCollections, queryablesMap, filters, valuesMap]);
+    }, [stacEndpoint, authToken, selectedCollections, queryablesMap]);
 
     return (
         <Box sx={{width: '100%', height: '100%', overflowY: 'auto', p: 1}}>
@@ -226,7 +203,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                                     <FilterWidget
                                                         key={`${collectionName}-queryable-${qName}`}
                                                         collectionName={collectionName}
-                                                        filterData={valuesMap.get(collectionName)?.get(qName) ?? []} 
+                                                        filterData={valuesMap.get(collectionName)?.get(qName) ?? [{ id: `${qName}-0`, fieldKey: qName }]} 
                                                         qName={qName}
                                                         queryable={queryable}
                                                         updateFilterHandler={updateFilters}
@@ -246,7 +223,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
                     <Box sx={{display: 'flex', flexDirection: 'row'}}>
                         <Tooltip title={t('applyTooltip')}>
-                            <Button onClick={handleApply} variant="contained" disabled={bbox === null}>
+                            <Button onClick={handleApply} variant="contained">
                                 {t('apply')}
                             </Button>
                         </Tooltip>

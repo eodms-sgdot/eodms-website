@@ -65,24 +65,14 @@ const StringFilter: React.FC<StringFilterProps> = ({
     const newValue = event.target.value;
     setLocalValue(newValue);
 
-    if(queryable.pattern) {
-      // ^ and $ are needed to make sure the entire value matches pattern the and not just a substring matches
-      const regEx = new RegExp('^'+queryable.pattern+'$', 'i');
-      
-      if(regEx.test(newValue) || newValue === '') {
-        setValid(true);
-        const newFilter: FilterValue = {...filterData, type: 'string', value: newValue};
-        updateFilterHandler(collectionName, newFilter);
-      }
-      else {
-        //TODO better validation (reset value to '' if invalid ?)
-        setValid(false);
-      }
-    }
-    else {
-      const newFilter: FilterValue = {...filterData, type: 'string', value: newValue};
-      updateFilterHandler(collectionName, newFilter);
-    }
+    // ^ and $ are needed to make sure the entire value matches pattern the and not just a substring matches
+    setValid(!queryable.pattern || newValue === '' || new RegExp('^'+queryable.pattern+'$', 'i').test(newValue));
+  };
+
+  const commitValue = () => {
+    if (!valid) return;
+    const newFilter: FilterValue = {...filterData, type: 'string', value: localValue};
+    updateFilterHandler(collectionName, newFilter);
   };
 
   /**
@@ -159,6 +149,8 @@ const StringFilter: React.FC<StringFilterProps> = ({
         variant="outlined"
         value={localValue}
         onChange={handleFilterValueChange}
+        onBlur={commitValue}
+        onKeyDown={(e) => { if (e.key === 'Enter') commitValue(); }}
         placeholder={t('stringPlaceholder')}
         color={valid ? 'primary' : 'warning'}
         sx={{ width: '50vw', maxWidth: 374}}

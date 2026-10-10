@@ -104,6 +104,8 @@ const DatePicker: React.FC<DatePickerProps> = ({
                 <InputLabel>{t('temporalExtent')}</InputLabel>
                 <Select value={searchTemporal} label={t('temporalExtent')} onChange={temporalChange}>
                     <MenuItem value="anytime">{t('anytime')}</MenuItem>
+                    <MenuItem value="1">{t('last24Hours')}</MenuItem>
+                    <MenuItem value="2">{t('last48Hours')}</MenuItem>
                     <MenuItem value="30">{t('last30')}</MenuItem>
                     <MenuItem value="90">{t('last90')}</MenuItem>
                     <MenuItem value="365">{t('last1Year')}</MenuItem>

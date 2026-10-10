@@ -6,7 +6,6 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  Popover,
   Button,
   IconButton,
   InputLabel,
@@ -19,17 +18,16 @@ import { AppContext } from "../AppContext";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import { getBaseMap, getBaseMaps, getBaseMapTitle, type BaseMapId } from "../basemaps";
+import Blind from "./Blind";
 // import SyncIcon from "@mui/icons-material/Sync";
 
 interface PreferencesPanelProps {
-  /** The anchor element controlling the popover visibility */
-  anchorEl: HTMLButtonElement | null;
-  /** The Callback fired when clicking outside the popover to close it */
+  open: boolean;
   onClose: () => void;
 }
 
 export default function PreferencesPanel({
-  anchorEl,
+  open,
   onClose,
 }: PreferencesPanelProps) {
   const {
@@ -46,18 +44,11 @@ export default function PreferencesPanel({
     setSearchLimit,
     t,
   } = useContext(AppContext)!;
-  const isOpen = Boolean(anchorEl);
   const availableLayers = getBaseMaps();
 
   return (
-    <Popover
-      open={isOpen}
-      anchorEl={anchorEl}
-      onClose={onClose}
-      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-      transformOrigin={{ vertical: "top", horizontal: "right" }}
-    >
-      <Box sx={{ p: 2, width: "80vw", maxWidth: 500, maxHeight: 400, overflowY: "auto" }}>
+    <Blind open={open} onClose={onClose} align="right" width={500}>
+      <Box sx={{ px: 2, pb: 1 }}>
         <Typography variant="h6" color="primary" gutterBottom>
           {t("preferences")}
         </Typography>
@@ -251,6 +242,6 @@ export default function PreferencesPanel({
           {t("version")} {import.meta.env.VITE_APP_VERSION}
         </Typography>
       </Box>
-    </Popover>
+    </Blind>
   );
 }

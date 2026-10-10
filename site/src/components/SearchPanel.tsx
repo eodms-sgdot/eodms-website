@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useCallback } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Popover, Tooltip, Badge, Radio } from '@mui/material';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge, Radio } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -8,7 +8,7 @@ import FilterPanel from './filters/FilterPanel';
 import DatePicker from './datepicker/DatePicker';
 import { getCollection, getCollections } from '../services/StacService';
 import { fields } from '../session';
-import { useIsMobile } from '../utils/RenderingUtils';
+import Blind from './Blind';
 import SearchIcon from '@mui/icons-material/Search';
 import NaplWelcome from './NaplWelcome';
 
@@ -81,8 +81,6 @@ export default function SearchPanel({
     t,
   } = useContext(AppContext)!;
   const [filterButtonEl, setFilterButtonEl] = useState<HTMLButtonElement | null>(null);
-
-  const isMobile = useIsMobile();
 
   /**
    * Function that counts the currently applied filters
@@ -279,14 +277,7 @@ export default function SearchPanel({
         </Box>
       )}
 
-      <Popover
-        open={Boolean(filterButtonEl)}
-        anchorEl={filterButtonEl}
-        onClose={() => setFilterButtonEl(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: (isMobile ? "right" : "left") }}
-        sx={{ height: "80svh" }}
-      >
+      <Blind open={Boolean(filterButtonEl)} onClose={() => setFilterButtonEl(null)}>
         <FilterPanel
           selectedCollections={selectedCollections}
           countFilters={countFilters}
@@ -294,7 +285,7 @@ export default function SearchPanel({
           onClose={() => setFilterButtonEl(null)}
           executeSearch={executeSearch}
         />
-      </Popover>
+      </Blind>
 
       {loading ? (
         <CircularProgress size={24} sx={{ my: 2, alignSelf: "center" }} />

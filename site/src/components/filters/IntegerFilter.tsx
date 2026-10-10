@@ -85,8 +85,11 @@ const IntegerFilter: React.FC<IntegerFilterProps> = ({
     else {
       setValid(false);
     }
+  };
 
-    const newFilter: FilterValue = {...filterData, type: 'number', value: +newValue};
+  const commitValue = () => {
+    if (!valid) return;
+    const newFilter: FilterValue = {...filterData, type: 'number', value: +localValue};
     updateFilterHandler(collectionName, newFilter);
   };
 
@@ -165,6 +168,8 @@ const IntegerFilter: React.FC<IntegerFilterProps> = ({
         value={localValue}
         slotProps={{ htmlInput: {min: minimum,  max: maximum} }}
         onChange={handleFilterValueChange}
+        onBlur={commitValue}
+        onKeyDown={(e) => { if (e.key === 'Enter') commitValue(); }}
         placeholder={t('numberPlaceholder')}
         color={valid ? 'primary' : 'warning'}
         sx={{ width: '50vw', maxWidth: 374}}
