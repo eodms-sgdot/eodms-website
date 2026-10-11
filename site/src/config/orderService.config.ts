@@ -4,7 +4,9 @@ import { EODMSOrderService, } from "../services/EODMSOrderService";
 export const SERVICE_REGISTRY: RegistryEntry[] = [
   {
     name: "EODMS STAC Catalog",
-    condition: (url) => url.hostname === "eodms-sgdot.nrcan-rncan.gc.ca",
+    // In dev the relative /search URL resolves to localhost, but the Vite proxy forwards it to this host.
+    condition: (url) => url.hostname === "eodms-sgdot.nrcan-rncan.gc.ca"
+      || (import.meta.env.DEV && url.pathname.startsWith("/search")),
     ServiceClass: EODMSOrderService,
     // DDS has no CORS headers, so local dev goes through the Vite /dds proxy.
     getOrderEndpoint: (url) => `${import.meta.env.DEV ? '' : url.origin}/dds/v1/item`,

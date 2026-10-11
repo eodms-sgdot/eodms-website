@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useContext, useCallback } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge, Radio } from '@mui/material';
+import React, { useEffect, useState, useContext, useCallback, useRef } from 'react';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -82,6 +82,10 @@ export default function SearchPanel({
   } = useContext(AppContext)!;
   const [filterButtonEl, setFilterButtonEl] = useState<HTMLButtonElement | null>(null);
 
+  // Identifies what the list shows; a refreshed token keeps it, so that refetch runs silently.
+  const listKey = `${stacEndpoint}|${!!authToken}|${fixedCollectionId ?? ''}`;
+  const lastListKey = useRef<string | null>(null);
+
   /**
    * Function that counts the currently applied filters
    * @returns The number of currently applied filters
@@ -112,15 +116,22 @@ export default function SearchPanel({
      * * @async
      */
     const fetchCollections = async () => {
-      setLoading(true);
+      const silent = lastListKey.current === listKey;
+      lastListKey.current = listKey;
+      if (!silent) setLoading(true);
+      // Keep the existing array (and object identities) when nothing changed.
+      const keepIfSame = (next: STACCollection[]) => (prev: STACCollection[]) =>
+        JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       try {
         if (fixedCollectionId) {
           const collection = await getCollection(stacEndpoint, fixedCollectionId, authToken);
-          setCollections([collection]);
-          setSelectedCollections([collection]);
+          if (cancelled) return;
+          setCollections(keepIfSame([collection]));
+          if (!silent) setSelectedCollections([collection]);
         } else {
           const collections = await getCollections(stacEndpoint, authToken);
-          setCollections(collections);
+          if (cancelled) return;
+          setCollections(keepIfSame(collections));
         }
       } catch (error: unknown) {
         if (axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 401)) {
@@ -139,9 +150,11 @@ export default function SearchPanel({
         setLoading(false);
       }
     };
+    let cancelled = false;
     fetchCollections();
+    return () => { cancelled = true; };
   }, [
-    stacEndpoint, authToken, fixedCollectionId, setSelectedCollections,
+    stacEndpoint, authToken, listKey, fixedCollectionId, setSelectedCollections,
     setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry,
     setAuthErrorMessage, setIsAuthOpen,
   ]);
@@ -202,6 +215,13 @@ export default function SearchPanel({
    * @param collection The checked/unchecked collection
    */
   const toggleCollection = ((collection: STACCollection) => {
+    // Without item-search only one collection can be queried, so selecting replaces the selection.
+    if(!supportsSearch && !selectedCollections.includes(collection)) {
+      setFilters({ [collection.id]: [] });
+      setSelectedCollections([collection]);
+      return;
+    }
+
     if(selectedCollections.includes(collection)) {
       const updated = {...filters};
       delete updated[collection.id];
@@ -303,18 +323,11 @@ export default function SearchPanel({
               <Tooltip key={c.id} title={c.description || c.title || c.id}>
                 <FormControlLabel
                   control={
-                    supportsSearch ?
-                      <Checkbox
-                        size="small"
-                        checked={selectedCollections.includes(c)}
-                        onChange={() => toggleCollection(c)}
-                      />
-                    :
-                      <Radio
-                        size="small"
-                        checked={selectedCollections.includes(c)}
-                        onChange={() => toggleCollection(c)}
-                      />
+                    <Checkbox
+                      size="small"
+                      checked={selectedCollections.includes(c)}
+                      onChange={() => toggleCollection(c)}
+                    />
                   }
                   label={
                     <Typography variant="body2">{c.title || c.id}</Typography>

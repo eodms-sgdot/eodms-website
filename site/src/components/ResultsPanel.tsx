@@ -39,6 +39,7 @@ import { AppContext } from "../AppContext";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DownloadIcon from "@mui/icons-material/Download";
+import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import DownloadDoneIcon from "@mui/icons-material/DownloadDone";
@@ -153,6 +154,8 @@ interface ResultsPanelProps {
   selectedFootprints: Record<string, string>;
   /** Callback fired when a user checks/unchecks an item's footprint box */
   onToggleFootprint: (item: STACItem) => void;
+  /** Callback fired to empty the cart (uncheck every item) */
+  onClearCart: () => void;
   /** The ID of the item currently clicked/focused on the map */
   focusedItem: string | null;
   /** The ID of the item currently hovered on the map or in this list */
@@ -206,6 +209,7 @@ export default function ResultsPanel({
   isSearching,
   selectedFootprints,
   onToggleFootprint,
+  onClearCart,
   focusedItem,
   hoveredItem,
   onHoverItem,
@@ -271,6 +275,47 @@ export default function ResultsPanel({
       alert(t("errorOrderSubmitFailed"));
     } finally {
       setItemsLoading(prev => ({ ...prev, [itemUuid]: false }));
+    }
+  };
+
+  // The cart is the set of checked results; it empties whenever the results change.
+  const cartItems = useMemo(() => results.filter(i => !!selectedFootprints[i.id]), [results, selectedFootprints]);
+  const [cartBusy, setCartBusy] = useState(false);
+  const needsLogin = (item: STACItem) => !!item.assets.product && !(item.assets.product.href && !item.assets.product["auth:refs"]);
+  const cartLoginBlocked = !userId && cartItems.some(needsLogin);
+
+  /** Applies each item's Prepare download rules: open a ready download, or submit one DDS order per item. */
+  const handleCartDownload = async () => {
+    let handled = 0;
+    const toOrder: STACItem[] = [];
+    setCartBusy(true);
+    try {
+      for (const item of cartItems) {
+        if (!isOrderingSupported || !item.assets.product) continue;
+        if (!needsLogin(item)) {
+          window.open(item.assets.product.href, "_blank", "noopener,noreferrer");
+          handled++;
+          continue;
+        }
+        if (!userId) continue;
+        const order = orders.find(o => o?.itemIds?.includes(item.id));
+        if (order?.status === "Available") {
+          await handleOrderLink(order.orderId, order.downloadUrl ?? null);
+          handled++;
+        } else if (!order || order.status === "Failed") {
+          toOrder.push(item);
+        }
+      }
+
+      handled += toOrder.length;
+      // Flag every result as requesting at once, then let the per-item handler clear each as it finishes.
+      setItemsLoading(prev => ({ ...prev, ...Object.fromEntries(toOrder.map(i => [i.id, true])) }));
+      await Promise.all(toOrder.map(item =>
+        handleCreateOrder(item.id, item.properties?.order_key ? String(item.properties.order_key) : "", item.collection)));
+
+      if (handled === 0) alert(t("cartNothingToDownload"));
+    } finally {
+      setCartBusy(false);
     }
   };
 
@@ -863,6 +908,25 @@ export default function ResultsPanel({
           </IconButton>
         </Box>
       </Box>
+
+      {cartItems.length > 0 && (
+        <Box sx={{ px: 2, py: 0.5, display: "flex", alignItems: "center", gap: 1, bgcolor: alpha(brandColor, 0.08), borderBottom: 1, borderColor: "divider" }}>
+          <ShoppingCartIcon fontSize="small" color="primary" />
+          <Typography variant="body2" sx={{ fontWeight: 700, flexGrow: 1 }}>
+            {t("cart")} ({cartItems.length})
+          </Typography>
+          <Tooltip title={cartLoginBlocked ? t("loginToOrder") : t("downloadCartHover")}>
+            <span>
+              <Button size="small" variant="contained" startIcon={cartBusy ? <CircularProgress size={14} /> : <DownloadIcon />} disabled={cartBusy} onClick={handleCartDownload}>
+                {t("download")}
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={t("emptyCartHover")}>
+            <Button size="small" onClick={onClearCart}>{t("clear")}</Button>
+          </Tooltip>
+        </Box>
+      )}
 
       <Box sx={{ p: view === "table" && !isSearching && results.length > 0 ? 0 : 1, overflowY: "auto", flexGrow: 1 }}>
         {isSearching ? (

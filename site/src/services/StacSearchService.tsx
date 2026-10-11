@@ -245,14 +245,16 @@ export class StacSearchService {
   /**
    * Updates the STAC endpoint, resetting all state.
    */
-  setEndpoint(stacEndpoint: string, onSortingSupportResolved?: (supports: boolean) => void): void {
+  setEndpoint(stacEndpoint: string, onSortingSupportResolved?: (supports: boolean) => void,
+      onSearchSupportResolved?: (supports: boolean) => void): void {
     this.stacEndpoint = stacEndpoint;
     this.urlHistory = [];
     this.currentPage = 0;
     this.nextUrl = null;
     this.supportsSorting = false;
+    this.supportsSearch = false;
     this._sortingSupportPromise = this.checkSortingSupport(onSortingSupportResolved);
-    this._searchSupportPromise = this.checkSearchSupport(onSortingSupportResolved);
+    this._searchSupportPromise = this.checkSearchSupport(onSearchSupportResolved);
   }
 
   /**

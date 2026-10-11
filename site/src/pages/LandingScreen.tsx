@@ -113,22 +113,17 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
   }
 
-  const searchService = useRef(
-    new StacSearchService(
-      stacEndpoint, 
-      (supportsSort) => {
-        setSupportsSorting(supportsSort);
-      },
-      (supportsSearch) => {
-        setSupportsSearch(supportsSearch);
-      }
-    ));
+  const searchService = useRef<StacSearchService | null>(null);
+  if (!searchService.current) {
+    searchService.current = new StacSearchService(stacEndpoint, setSupportsSorting, setSupportsSearch);
+  }
 
-  // Keep the endpoint in sync
+  // Keep the endpoint in sync; the service already checked the initial endpoint on creation.
+  const lastEndpoint = useRef(stacEndpoint);
   useEffect(() => {
-    searchService.current.setEndpoint(stacEndpoint, (supports) => {
-      setSupportsSorting(supports);
-    });
+    if (lastEndpoint.current === stacEndpoint) return;
+    lastEndpoint.current = stacEndpoint;
+    searchService.current!.setEndpoint(stacEndpoint, setSupportsSorting, setSupportsSearch);
   }, [stacEndpoint]);
 
   useEffect(() => {
@@ -621,7 +616,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             <ResultsPanel 
               results={searchResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} 
               isSearching={isSearching} selectedFootprints={selectedFootprints}
-              onToggleFootprint={handleToggleFootprint} focusedItem={focusedItem} 
+              onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints({})} focusedItem={focusedItem} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onClear={handleOnResultsClear}
               hasNext={pagingState.hasNext} hasPrevious={pagingState.hasPrevious} 
