@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useMemo, useState, useContext } from "react";
 import {
   Box,
   Typography,
@@ -16,12 +16,20 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableRow,
+  TableSortLabel,
+  Menu,
+  MenuItem,
+  ListItemText,
+  ToggleButton,
+  ToggleButtonGroup,
   Skeleton,
   Checkbox,
   Tooltip,
   Link,
   LinearProgress,
+  CircularProgress,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
@@ -35,6 +43,11 @@ import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import DownloadDoneIcon from "@mui/icons-material/DownloadDone";
 import ReplayIcon from "@mui/icons-material/Replay";
+import ViewAgendaIcon from "@mui/icons-material/ViewAgenda";
+import TableRowsIcon from "@mui/icons-material/TableRows";
+import ImageIcon from "@mui/icons-material/Image";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
@@ -80,6 +93,41 @@ const ButtonProgress = ({ value, color }: { value?: number; color: "primary" | "
     sx={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3 }}
   />
 );
+
+type ResultsView = "cards" | "table";
+type SortKey = string;
+
+const VIEW_STORAGE_KEY = "eodms.resultsView";
+const COLUMNS_STORAGE_KEY = "eodms.resultsColumns";
+
+/** Property columns offered first, and shown by default when the user has no saved choice. */
+const PREFERRED_COLUMNS = [
+  "datetime", "start_datetime", "platform", "sar:product_type", "product_type",
+  "sar:instrument_mode", "instrument_mode", "sat:orbit_state", "gsd",
+];
+const MAX_DEFAULT_COLUMNS = 4;
+const HIDDEN_PROPERTIES = new Set(["order_key"]);
+
+const isTemporalKey = (key: string) => /datetime$|^created$|^updated$/.test(key);
+const columnLabel = (key: string) => key.split(":").pop()!.replace(/_/g, " ");
+
+const isScalar = (v: unknown) => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+
+const formatCell = (key: string, value: unknown) => {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  const text = String(value);
+  return isTemporalKey(key) ? text.slice(0, 16).replace("T", " ") : text;
+};
+
+const loadColumnPrefs = (): string[] | null => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY) ?? "null");
+    return Array.isArray(parsed) ? parsed.filter(k => typeof k === "string") : null;
+  } catch {
+    return null;
+  }
+};
 
 const formatElapsed = (ms: number) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -173,6 +221,11 @@ export default function ResultsPanel({
   userId
 }: ResultsPanelProps) {
   const [activeMetadata, setActiveMetadata] = useState<STACItem | null>(null);
+  const [view, setView] = useState<ResultsView>(() =>
+    localStorage.getItem(VIEW_STORAGE_KEY) === "table" ? "table" : "cards");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "number", dir: "asc" });
+  const [columnPrefs, setColumnPrefs] = useState<string[] | null>(loadColumnPrefs);
+  const [columnMenuEl, setColumnMenuEl] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint} = useContext(AppContext)!;
@@ -290,11 +343,76 @@ export default function ResultsPanel({
   // Scrolls the list to the focused item when a user clicks a footprint on the map
   useEffect(() => {
     if (focusedItem) {
-      const element = document.getElementById(`result-card-${focusedItem}`);
+      const element = document.getElementById(`result-card-${focusedItem}`)
+        ?? document.getElementById(`result-row-${focusedItem}`);
       if (element)
         element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [focusedItem]);
+  }, [focusedItem, view]);
+
+  const changeView = (next: ResultsView | null) => {
+    if (!next) return;
+    setView(next);
+    localStorage.setItem(VIEW_STORAGE_KEY, next);
+  };
+
+  const toggleSort = (key: SortKey) =>
+    setSort(prev => ({ key, dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc" }));
+
+  // Same `results` datasource as the cards; `number` keeps the map marker numbering.
+  const sortedRows = useMemo(() => {
+    const rows = results.map((item, index) => ({
+      item,
+      number: numberOffset + index + 1,
+      label: item.properties?.order_key ? String(item.properties.order_key) : item.id,
+    }));
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return rows.sort((a, b) => {
+      if (sort.key === "number") return (a.number - b.number) * factor;
+      if (sort.key === "id") return a.label.localeCompare(b.label, undefined, { numeric: true }) * factor;
+      const va: unknown = a.item.properties?.[sort.key];
+      const vb: unknown = b.item.properties?.[sort.key];
+      const missingA = va === null || va === undefined || va === "";
+      const missingB = vb === null || vb === undefined || vb === "";
+      // Items without a value always sort last.
+      if (missingA !== missingB) return missingA ? 1 : -1;
+      if (missingA) return a.number - b.number;
+      const cmp = typeof va === "number" && typeof vb === "number"
+        ? va - vb
+        : formatCell(sort.key, va).localeCompare(formatCell(sort.key, vb), undefined, { numeric: true });
+      return cmp * factor || a.number - b.number;
+    });
+  }, [results, numberOffset, sort]);
+
+  // Property columns offered by the current results, so any mission's fields are available.
+  const candidateKeys = useMemo(() => {
+    const found = new Set<string>();
+    for (const item of results) {
+      for (const [key, value] of Object.entries(item.properties ?? {})) {
+        if (HIDDEN_PROPERTIES.has(key)) continue;
+        if (isScalar(value) || (Array.isArray(value) && value.every(isScalar))) found.add(key);
+      }
+    }
+    const preferred = PREFERRED_COLUMNS.filter(k => found.has(k));
+    return [...preferred, ...[...found].filter(k => !preferred.includes(k)).sort()];
+  }, [results]);
+
+  const visibleKeys = useMemo(() => {
+    const saved = columnPrefs?.filter(k => candidateKeys.includes(k));
+    // Saved favourites that this collection lacks fall back to the defaults.
+    if (columnPrefs && (columnPrefs.length === 0 || saved!.length > 0)) return saved!;
+    const defaults = PREFERRED_COLUMNS.filter(k => candidateKeys.includes(k)).slice(0, MAX_DEFAULT_COLUMNS);
+    return defaults.length > 0 ? defaults : candidateKeys.slice(0, 3);
+  }, [columnPrefs, candidateKeys]);
+
+  const saveColumns = (next: string[] | null) => {
+    setColumnPrefs(next);
+    if (next) localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+    else localStorage.removeItem(COLUMNS_STORAGE_KEY);
+  };
+
+  const toggleColumn = (key: string) =>
+    saveColumns(visibleKeys.includes(key) ? visibleKeys.filter(k => k !== key) : [...visibleKeys, key]);
 
   const buildThumbUrl = (item: STACItem) => {
     const rawUrl = item.assets.thumbnail?.href || item.assets.preview?.href || item.assets.overview?.href;
@@ -321,6 +439,363 @@ export default function ResultsPanel({
       }
     }
   }
+
+  /** Download/order controls for one item, shared by the card and table views. */
+  const renderOrderActions = (item: STACItem, compact = false) => {
+    const associatedOrder = orders.find(o => o?.itemIds?.includes(item.id));
+    const isItemLoading = !!itemsLoading[item.id];
+    const canOrderItem: boolean = !!item.assets.product;
+    const loginRequired: boolean = !!item.assets.product?.["auth:refs"];
+    const directDownload: string | null = item.assets.product?.href ?? null;
+    const orderKey: string | null = item.properties?.order_key ? String(item.properties.order_key) : null;
+    const filesize = associatedOrder ? getFilesizeFromUrl(associatedOrder.downloadUrl ?? null) : '';
+    const directAssets = canOrderItem ? [] : getDirectAssets(item);
+
+    if (compact) {
+      const order = () => handleCreateOrder(item.id, orderKey ?? '', item.collection);
+      const openOrder = (o: NonNullable<typeof associatedOrder>) => handleOrderLink(o.orderId, o.downloadUrl ?? null);
+      let action = null;
+
+      if (isOrderingSupported && canOrderItem) {
+        if (directDownload && !loginRequired) {
+          action = (
+            <Tooltip title={t("download")}>
+              <IconButton size="small" color="success" aria-label={t("download")} href={directDownload} target="_blank" rel="noopener noreferrer">
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          );
+        } else if (!userId) {
+          action = (
+            <Tooltip title={t("loginToOrder")}>
+              <span><IconButton size="small" disabled aria-label={t("orderZip")}><Inventory2Icon fontSize="small" /></IconButton></span>
+            </Tooltip>
+          );
+        } else if (!associatedOrder) {
+          action = (
+            <Tooltip title={isItemLoading ? t("requesting") : `${t("orderZip")} - ${t("downloadZipArchive")}`}>
+              <span>
+                <IconButton size="small" color="primary" disabled={isItemLoading} aria-label={t("orderZip")} onClick={order}>
+                  {isItemLoading ? <CircularProgress size={18} /> : <Inventory2Icon fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          );
+        } else if (associatedOrder.status === "Available") {
+          const done = downloadedOrders.has(associatedOrder.orderId);
+          action = (
+            <Tooltip title={(done ? t("downloadAgain") : t("download")) + filesize}>
+              <IconButton
+                size="small"
+                color="success"
+                aria-label={t("download")}
+                onClick={() => openOrder(associatedOrder)}
+                onAnimationEnd={() => setJustReady(prev => { const next = new Set(prev); next.delete(associatedOrder.orderId); return next; })}
+                sx={{
+                  animation: !done && justReady.has(associatedOrder.orderId) ? `${readyPulse} 1.2s ease-out 3` : "none",
+                  "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+                }}
+              >
+                {done ? <DownloadDoneIcon fontSize="small" /> : <DownloadIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          );
+        } else if (associatedOrder.status === "Failed") {
+          action = (
+            <Tooltip title={`${t("retryOrder")} - ${associatedOrder.error || associatedOrder.message || `${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}`}`}>
+              <span>
+                <IconButton size="small" color="error" disabled={isItemLoading} aria-label={t("retryOrder")} onClick={order}>
+                  <ReplayIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          );
+        } else {
+          action = (
+            <>
+              <Tooltip title={`${t("preparingHover")} ${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}>
+                <Box component="span" role="img" aria-label={t("preparing")} sx={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30 }}>
+                  <CircularProgress
+                    size={28}
+                    thickness={3}
+                    color="warning"
+                    variant="determinate"
+                    value={estimateOrderProgress(associatedOrder.status, associatedOrder.orderDate, now)}
+                    sx={{ position: "absolute" }}
+                  />
+                  <HourglassEmptyIcon color="warning" sx={{ fontSize: 16 }} />
+                </Box>
+              </Tooltip>
+              <Tooltip title={t("cancelPreparing")}>
+                <IconButton size="small" aria-label={t("cancelPreparing")} onClick={() => expireOrder(associatedOrder.orderId)}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
+          );
+        }
+      }
+
+      return (
+        <>
+          {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
+          {action}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
+        {isOrderingSupported && (
+          <>
+            {!canOrderItem ? (
+              null
+            ) : directDownload && !loginRequired ? (
+              <Tooltip title={t("download")}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<DownloadIcon />}
+                    href={directDownload}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t("download")}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : !userId ? (
+              <Tooltip title={t("loginToOrder")}>
+                <span>
+                  <Button size="small" variant="outlined" disabled startIcon={<Inventory2Icon />}>
+                    {t("orderZip")}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : !associatedOrder ? (
+              <Tooltip title={t("downloadZipArchive")}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Inventory2Icon />}
+                  disabled={isItemLoading}
+                  onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
+                  sx={inButtonProgressSx}
+                >
+                  {isItemLoading ? t("requesting") : t("orderZip")}
+                  {isItemLoading && <ButtonProgress color="primary" />}
+                </Button>
+              </Tooltip>
+            ) : associatedOrder.status === "Available" ? (
+              downloadedOrders.has(associatedOrder.orderId) ? (
+                <Tooltip title={t("downloadAgain") + filesize}>
+                  <Button
+                    size="small"
+                    color="success"
+                    startIcon={<DownloadDoneIcon />}
+                    onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
+                  >
+                    {t("downloaded")}
+                  </Button>
+                </Tooltip>
+              ) : (
+                <Tooltip title={t("download") + filesize}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<DownloadIcon />}
+                    onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
+                    onAnimationEnd={() => setJustReady(prev => { const next = new Set(prev); next.delete(associatedOrder.orderId); return next; })}
+                    sx={{
+                      ...inButtonProgressSx,
+                      animation: justReady.has(associatedOrder.orderId) ? `${readyPulse} 1.2s ease-out 3` : "none",
+                      "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+                    }}
+                  >
+                    {t("download") + filesize}
+                    {justReady.has(associatedOrder.orderId) && <ButtonProgress value={100} color="success" />}
+                  </Button>
+                </Tooltip>
+              )
+            ) : associatedOrder.status === "Failed" ? (
+              <Tooltip
+                title={associatedOrder.error || associatedOrder.message || `${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}`}
+              >
+                <span>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<ReplayIcon />}
+                    disabled={isItemLoading}
+                    onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
+                    sx={inButtonProgressSx}
+                  >
+                    {isItemLoading ? t("requesting") : t("retryOrder")}
+                    <ButtonProgress value={isItemLoading ? undefined : 100} color={isItemLoading ? "primary" : "error"} />
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <>
+                <Tooltip
+                  title={`${t("preparingHover")} ${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}
+                >
+                  <span>
+                    <Button
+                      size="small"
+                      color="warning"
+                      disabled
+                      startIcon={<HourglassEmptyIcon />}
+                      sx={inButtonProgressSx}
+                    >
+                      {t("preparing")}
+                      {associatedOrder.orderDate && ` ${formatElapsed(now - Date.parse(associatedOrder.orderDate))}`}
+                      <ButtonProgress color="warning" value={estimateOrderProgress(associatedOrder.status, associatedOrder.orderDate, now)} />
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={t("cancelPreparing")}>
+                  <IconButton
+                    size="small"
+                    aria-label={t("cancelPreparing")}
+                    onClick={() => expireOrder(associatedOrder.orderId)}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderTable = () => {
+    const sortCell = (key: SortKey, label: string, tooltip?: string) => (
+      <TableCell key={key} sortDirection={sort.key === key ? sort.dir : false} sx={{ whiteSpace: "nowrap", textTransform: "capitalize" }}>
+        <Tooltip title={tooltip ?? ""}>
+          <TableSortLabel active={sort.key === key} direction={sort.key === key ? sort.dir : "asc"} onClick={() => toggleSort(key)}>
+            {label}
+          </TableSortLabel>
+        </Tooltip>
+      </TableCell>
+    );
+
+    const dateKey = ["datetime", "start_datetime"].find(k => visibleKeys.includes(k));
+    const otherKeys = visibleKeys.filter(k => k !== dateKey);
+
+    return (
+      <>
+      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 0.5 }}>
+        <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnMenuEl(e.currentTarget)} sx={{ textTransform: "none" }}>
+          {t("columns")}
+        </Button>
+        <Menu anchorEl={columnMenuEl} open={!!columnMenuEl} onClose={() => setColumnMenuEl(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
+          {candidateKeys.map(key => (
+            <MenuItem key={key} dense onClick={() => toggleColumn(key)}>
+              <Checkbox size="small" edge="start" checked={visibleKeys.includes(key)} tabIndex={-1} disableRipple />
+              <ListItemText primary={columnLabel(key)} secondary={columnLabel(key) === key ? undefined : key} sx={{ textTransform: "capitalize", "& .MuiListItemText-secondary": { textTransform: "none" } }} />
+            </MenuItem>
+          ))}
+          <MenuItem dense divider={false} onClick={() => { saveColumns(null); setColumnMenuEl(null); }}>
+            <ListItemText primary={t("resetColumns")} />
+          </MenuItem>
+        </Menu>
+      </Box>
+      <Table size="small" stickyHeader sx={{ "& td, & th": { whiteSpace: "nowrap", py: 0.25, px: 0.75 }, "& .MuiTableCell-paddingCheckbox": { width: "auto", px: 0.25 } }}>
+        <TableHead>
+          <TableRow>
+            {sortCell("number", "#")}
+            <TableCell padding="checkbox" />
+            <TableCell padding="checkbox" />
+            <TableCell padding="checkbox" aria-label={t("actions")} />
+            {dateKey && sortCell(dateKey, columnLabel(dateKey), dateKey)}
+            {sortCell("id", t("itemId"))}
+            {otherKeys.map(key => sortCell(key, columnLabel(key), key))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sortedRows.map(({ item, number, label }) => {
+            const itemColor = selectedFootprints[item.id] || brandColor;
+            const isSelected = !!selectedFootprints[item.id];
+            const isHovered = item.id === hoveredItem;
+            const isThumbnailActive = !!activeThumbnails[item.id];
+            const isFocused = item.id === focusedItem;
+            const thumbUrl = buildThumbUrl(item);
+
+            return (
+              <TableRow
+                key={item.id}
+                id={`result-row-${item.id}`}
+                onMouseEnter={() => onHoverItem(item.id)}
+                onMouseLeave={() => onHoverItem(null)}
+                sx={{
+                  bgcolor: isFocused ? alpha(brandColor, 0.1) : isHovered ? alpha(itemColor, 0.12) : undefined,
+                  "& > td:first-of-type": { borderLeft: `4px solid ${itemColor}` },
+                }}
+              >
+                <TableCell sx={{ fontWeight: 700 }}>{number}</TableCell>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    size="small"
+                    checked={isSelected}
+                    onChange={() => onToggleFootprint(item)}
+                    slotProps={{ input: { "aria-label": label } }}
+                    sx={{ p: 0.25, color: isSelected ? itemColor : "default", "&.Mui-checked": { color: itemColor } }}
+                  />
+                </TableCell>
+                <TableCell padding="checkbox">
+                  <Tooltip title={isThumbnailActive ? t("hideMapHover") : t("showMapHover")}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        disabled={!thumbUrl}
+                        color={isThumbnailActive ? "success" : "default"}
+                        aria-label={isThumbnailActive ? t("hideMapHover") : t("showMapHover")}
+                        onClick={() => {
+                          onZoom(item);
+                          onToggleThumbnail(item.id, thumbUrl);
+                        }}
+                      >
+                        {isThumbnailActive ? <ImageIcon fontSize="small" /> : <ImageOutlinedIcon fontSize="small" />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell padding="checkbox">
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    {renderOrderActions(item, true)}
+                  </Box>
+                </TableCell>
+                {dateKey && <TableCell>{formatCell(dateKey, item.properties?.[dateKey])}</TableCell>}
+                <TableCell sx={{ width: 160, maxWidth: 160, overflow: "hidden" }}>
+                  <Tooltip title={`${item.collection} - ${label} - ${t("metadataHover")}`}>
+                    <Link
+                      component="button"
+                      variant="body2"
+                      onClick={() => setActiveMetadata(item)}
+                      sx={{ display: "block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", fontWeight: isFocused ? 900 : isSelected ? 700 : 400 }}
+                    >
+                      {label}
+                    </Link>
+                  </Tooltip>
+                </TableCell>
+                {otherKeys.map(key => (
+                  <TableCell key={key}>{formatCell(key, item.properties?.[key])}</TableCell>
+                ))}
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      </>
+    );
+  };
 
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -356,9 +831,28 @@ export default function ResultsPanel({
             </Typography>
           )}
         </Box>
-        <IconButton onClick={onClose} size="small" sx={{ color: "white" }}>
-          <CloseIcon />
-        </IconButton>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={view}
+            onChange={(_, next: ResultsView | null) => changeView(next)}
+            sx={{
+              "& .MuiToggleButton-root": { color: "white", borderColor: alpha("#fff", 0.5), py: 0.25 },
+              "& .Mui-selected": { bgcolor: `${alpha("#fff", 0.25)} !important` },
+            }}
+          >
+            <ToggleButton value="cards" aria-label={t("cardView")}>
+              <Tooltip title={t("cardView")}><ViewAgendaIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+            <ToggleButton value="table" aria-label={t("tableView")}>
+              <Tooltip title={t("tableView")}><TableRowsIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <IconButton onClick={onClose} size="small" sx={{ color: "white" }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
       </Box>
 
       <Box sx={{ p: 1, overflowY: "auto", flexGrow: 1 }}>
@@ -381,6 +875,8 @@ export default function ResultsPanel({
           >
             {t("noResults")}
           </Typography>
+        ) : view === "table" ? (
+          renderTable()
         ) : (
           results.map((item, index) => {
             const itemColor = selectedFootprints[item.id] || brandColor;
@@ -389,17 +885,7 @@ export default function ResultsPanel({
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
             const thumbUrl = buildThumbUrl(item);
-            // Check to see if there is an associated order
-            const associatedOrder = orders.find(o => o?.itemIds?.includes(item.id));
-            const isItemLoading = !!itemsLoading[item.id];
-
-            // Handle order information
-            const canOrderItem:boolean = item.assets.product ? true : false;
-            const loginRequired:boolean = item.assets.product?.["auth:refs"] ? true : false;
-            const directDownload:string|null = item.assets.product?.href ? item.assets.product.href : null;
             const orderKey:string|null = item.properties?.order_key ? String(item.properties?.order_key) : null;
-            const filesize = associatedOrder ? getFilesizeFromUrl((associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null)) : '';
-            const directAssets = canOrderItem ? [] : getDirectAssets(item);
 
             return (
               <Card
@@ -510,139 +996,7 @@ export default function ResultsPanel({
                     '& .MuiButton-root': { whiteSpace: 'nowrap', minWidth: 'max-content' },
                   }}
                 >
-                  {/* ======================================================== */}
-                  {/* CONDITIONAL ORDER BLOCK                                  */}
-                  {/* ======================================================== */}
-                  {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
-                  {isOrderingSupported && (
-                    <>
-                      {!canOrderItem ? (
-                        null
-                      ) : directDownload && !loginRequired ? (
-                        <Tooltip title={t("download")}>
-                          <span>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              color="success"
-                              startIcon={<DownloadIcon />}
-                              href={directDownload}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {t("download")}
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : !userId ? (
-                        <Tooltip title={t("loginToOrder")}>
-                          <span>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled
-                              startIcon={<Inventory2Icon />}
-                            >
-                              {t("orderZip")}
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : !associatedOrder ? (
-                        <Tooltip title={t("downloadZipArchive")}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<Inventory2Icon />}
-                            disabled={isItemLoading}
-                            onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
-                            sx={inButtonProgressSx}
-                          >
-                            {isItemLoading ? t("requesting") : t("orderZip")}
-                            {isItemLoading && <ButtonProgress color="primary" />}
-                          </Button>
-                        </Tooltip>
-                      ) : associatedOrder.status === "Available" ? (
-                        downloadedOrders.has(associatedOrder.orderId) ? (
-                          <Tooltip title={t("downloadAgain") + filesize}>
-                            <Button
-                              size="small"
-                              color="success"
-                              startIcon={<DownloadDoneIcon />}
-                              onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
-                            >
-                              {t("downloaded")}
-                            </Button>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title={t("download") + filesize}>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              color="success"
-                              startIcon={<DownloadIcon />}
-                              onClick={() => handleOrderLink(associatedOrder.orderId, (associatedOrder.downloadUrl ? associatedOrder.downloadUrl : null))}
-                              onAnimationEnd={() => setJustReady(prev => { const next = new Set(prev); next.delete(associatedOrder.orderId); return next; })}
-                              sx={{
-                                ...inButtonProgressSx,
-                                animation: justReady.has(associatedOrder.orderId) ? `${readyPulse} 1.2s ease-out 3` : "none",
-                                "@media (prefers-reduced-motion: reduce)": { animation: "none" },
-                              }}
-                            >
-                              {t("download") + filesize}
-                              {justReady.has(associatedOrder.orderId) && <ButtonProgress value={100} color="success" />}
-                            </Button>
-                          </Tooltip>
-                        )
-                      ) : associatedOrder.status === "Failed" ? ( 
-                        <Tooltip 
-                          title={associatedOrder.error || associatedOrder.message || `${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}`}
-                        >
-                          <span>
-                            <Button
-                              size="small"
-                              color="error"
-                              startIcon={<ReplayIcon />}
-                              disabled={isItemLoading}
-                              onClick={() => handleCreateOrder(item.id, (orderKey ? orderKey : ''), item.collection)}
-                              sx={inButtonProgressSx}
-                        >
-                            {isItemLoading ? t("requesting") : t("retryOrder")}
-                            <ButtonProgress value={isItemLoading ? undefined : 100} color={isItemLoading ? "primary" : "error"} />
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <>
-                        <Tooltip
-                          title={`${t("preparingHover")} ${t("currentStatus")}: ${associatedOrder.serverStatus ?? associatedOrder.status}.${associatedOrder.nextCheckAt ? ` ${t("nextCheck")} ${new Date(associatedOrder.nextCheckAt).toLocaleTimeString()}.` : ''}`}
-                        >
-                          <span>
-                            <Button
-                              size="small"
-                              color="warning"
-                              disabled
-                              startIcon={<HourglassEmptyIcon />}
-                              sx={inButtonProgressSx}
-                            >
-                              {t("preparing")}
-                              {associatedOrder.orderDate && ` ${formatElapsed(now - Date.parse(associatedOrder.orderDate))}`}
-                              <ButtonProgress color="warning" value={estimateOrderProgress(associatedOrder.status, associatedOrder.orderDate, now)} />
-                            </Button>
-                          </span>
-                        </Tooltip>
-                        <Tooltip title={t("cancelPreparing")}>
-                          <IconButton
-                            size="small"
-                            aria-label={t("cancelPreparing")}
-                            onClick={() => expireOrder(associatedOrder.orderId)}
-                          >
-                            <CloseIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        </>
-                      )}
-                    </>
-                  )}
+                  {renderOrderActions(item)}
                 </CardActions>
               </Card>
             );

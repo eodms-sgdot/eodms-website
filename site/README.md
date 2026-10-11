@@ -4,21 +4,30 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 ## Local Development
 
-Run the AAA proxy in one terminal:
-
-```cmd
-cd site\server
-npm install
-npm run start
-```
-
-Run the frontend in a second terminal:
+Install dependencies once:
 
 ```cmd
 cd site
 npm install
-npm run dev
+cd server
+npm install
 ```
+
+From the repository root, start the AAA proxy and frontend in separate
+terminals with:
+
+```cmd
+site\dev.cmd
+```
+
+Or, from this directory:
+
+```cmd
+dev.cmd
+```
+
+The launcher runs `npm run start` in `site\server` and `npm run dev` in `site`.
+To stop each process, close its terminal window or press `Ctrl+C` there.
 
 Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS Search
 service. Production builds retain those relative paths; the production host is
