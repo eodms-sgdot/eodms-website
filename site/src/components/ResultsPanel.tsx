@@ -36,6 +36,7 @@ import { keyframes } from "@emotion/react";
 import CloseIcon from "@mui/icons-material/Close";
 import type { STACItem } from "../types";
 import { AppContext } from "../AppContext";
+import { getHighlightColor } from "../theme";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -151,7 +152,7 @@ interface ResultsPanelProps {
   /** Boolean indicating if a network request is currently active */
   isSearching: boolean;
   /** Dictionary tracking which STAC Items are checked for footprint highlighting */
-  selectedFootprints: Record<string, string>;
+  selectedFootprints: ReadonlySet<string>;
   /** Callback fired when a user checks/unchecks an item's footprint box */
   onToggleFootprint: (item: STACItem) => void;
   /** Callback fired to empty the cart (uncheck every item) */
@@ -235,6 +236,7 @@ export default function ResultsPanel({
   const [columnMenuEl, setColumnMenuEl] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
+  const highlightColor = getHighlightColor(theme.palette.mode);
   const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint} = useContext(AppContext)!;
   
   // Tracks multiple item IDs currently ordered. 
@@ -279,7 +281,7 @@ export default function ResultsPanel({
   };
 
   // The cart is the set of checked results; it empties whenever the results change.
-  const cartItems = useMemo(() => results.filter(i => !!selectedFootprints[i.id]), [results, selectedFootprints]);
+  const cartItems = useMemo(() => results.filter(i => selectedFootprints.has(i.id)), [results, selectedFootprints]);
   const [cartBusy, setCartBusy] = useState(false);
   const needsLogin = (item: STACItem) => !!item.assets.product && !(item.assets.product.href && !item.assets.product["auth:refs"]);
   const cartLoginBlocked = !userId && cartItems.some(needsLogin);
@@ -314,6 +316,7 @@ export default function ResultsPanel({
         handleCreateOrder(item.id, item.properties?.order_key ? String(item.properties.order_key) : "", item.collection)));
 
       if (handled === 0) alert(t("cartNothingToDownload"));
+      else onClearCart();
     } finally {
       setCartBusy(false);
     }
@@ -775,8 +778,8 @@ export default function ResultsPanel({
         </TableHead>
         <TableBody>
           {sortedRows.map(({ item, number, label }) => {
-            const itemColor = selectedFootprints[item.id] || brandColor;
-            const isSelected = !!selectedFootprints[item.id];
+            const isSelected = selectedFootprints.has(item.id);
+            const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
@@ -800,7 +803,7 @@ export default function ResultsPanel({
                     checked={isSelected}
                     onChange={() => onToggleFootprint(item)}
                     slotProps={{ input: { "aria-label": label } }}
-                    sx={{ p: 0.25, color: isSelected ? itemColor : "default", "&.Mui-checked": { color: itemColor } }}
+                    sx={{ p: 0.25, "&.Mui-checked": { color: highlightColor } }}
                   />
                 </TableCell>
                 <TableCell padding="checkbox">
@@ -833,7 +836,7 @@ export default function ResultsPanel({
                       component="button"
                       variant="body2"
                       onClick={() => setActiveMetadata(item)}
-                      sx={{ display: "block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", fontWeight: isFocused ? 900 : isSelected ? 700 : 400 }}
+                      sx={{ display: "block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left", ...(isSelected && { color: highlightColor, textDecorationColor: highlightColor }) }}
                     >
                       {label}
                     </Link>
@@ -952,8 +955,8 @@ export default function ResultsPanel({
           renderTable()
         ) : (
           results.map((item, index) => {
-            const itemColor = selectedFootprints[item.id] || brandColor;
-            const isSelected = !!selectedFootprints[item.id];
+            const isSelected = selectedFootprints.has(item.id);
+            const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
@@ -1037,11 +1040,7 @@ export default function ResultsPanel({
                     size="small"
                     checked={isSelected}
                     onChange={() => onToggleFootprint(item)}
-                    sx={{
-                      p: 0.5,
-                      color: isSelected ? itemColor : "default",
-                      "&.Mui-checked": { color: itemColor },
-                    }}
+                    sx={{ p: 0.5, "&.Mui-checked": { color: highlightColor } }}
                   />
 
                   <Tooltip title={t("metadataHover")}>
@@ -1053,7 +1052,7 @@ export default function ResultsPanel({
                         mt: 0.5,
                         textAlign: "left",
                         wordBreak: "break-all",
-                        fontWeight: isFocused ? 900 : isSelected ? 700 : 400,
+                        ...(isSelected && { color: highlightColor, textDecorationColor: highlightColor }),
                       }}
                     >
                       {`${item.collection} - ${orderKey ?? item.id}`}

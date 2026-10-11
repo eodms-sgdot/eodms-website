@@ -4,6 +4,7 @@ import L, { LatLng, type LeafletEvent } from 'leaflet';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, GlobalStyles, TextField } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { AppContext } from '../AppContext';
+import { getHighlightColor } from '../theme';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
@@ -33,7 +34,7 @@ interface StacMapProps {
   /** Array of STAC features retrieved from the search */
   searchResults?: STACItem[];
   /** Dictionary mapping STAC Item IDs to their assigned highlight color string */
-  selectedFootprints?: Record<string, string>;
+  selectedFootprints?: ReadonlySet<string>;
   /** Callback fired when a user clicks on a rendered GeoJSON footprint */
   onFeatureClick?: (id: string) => void;
   /** The ID of the item currently hovered on the map or in the results list */
@@ -296,6 +297,7 @@ const FOOTPRINT_STAGGER_MS = 35;
 const FOOTPRINT_STAGGER_MAX_MS = 700;
 // Reusing icon instances stops Leaflet re-rendering chips (and replaying their animation) on every render.
 const chipIconCache = new Map<string, L.DivIcon>();
+const EMPTY_SET: ReadonlySet<string> = new Set();
 
 const footprintStyles = (
   <GlobalStyles styles={{
@@ -352,9 +354,10 @@ const footprintStyles = (
   }} />
 );
 
-export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = {}, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
+export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
+  const highlightColor = getHighlightColor(theme.palette.mode);
   const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup());
   const { language, locationSearchProvider, baseMapLayer, t } = useContext(AppContext)!; 
   const [coordinateDialogOpen, setCoordinateDialogOpen] = useState(false);
@@ -448,9 +451,9 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       </Dialog>
 
       {searchResults.map((item, index) => {
-        const isSelected = !!selectedFootprints[item.id];
+        const isSelected = selectedFootprints.has(item.id);
         const isHovered = item.id === hoveredItem;
-        const color = isSelected ? selectedFootprints[item.id] : brandColor;
+        const color = isSelected ? highlightColor : brandColor;
         const style: L.PathOptions = { className: 'stac-footprint', ...(isSelected
           ? { color, weight: isHovered ? 4 : 3, opacity: 0.9, fillColor: color, fillOpacity: isHovered ? 0.35 : 0.25 }
           : isHovered
@@ -478,9 +481,9 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       })}
 
       {searchResults.map((item, index) => {
-        const isSelected = !!selectedFootprints[item.id];
+        const isSelected = selectedFootprints.has(item.id);
         if ((!isSelected && item.id !== hoveredItem) || !item.geometry) return null;
-        const color = isSelected ? selectedFootprints[item.id] : brandColor;
+        const color = isSelected ? highlightColor : brandColor;
         const number = numberOffset + index + 1;
         const iconKey = `${number}|${color}`;
         let icon = chipIconCache.get(iconKey);

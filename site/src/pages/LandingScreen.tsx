@@ -76,7 +76,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const [selectedFootprints, setSelectedFootprints] = useState<Record<string, string>>({});
+  const [selectedFootprints, setSelectedFootprints] = useState<Set<string>>(() => new Set());
   const [focusedItem, setFocusedItem] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [activeThumbnails, setActiveThumbnails] = useState<Record<string, string>>({});
@@ -165,7 +165,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
   const handleSearchResult = (result: StacSearchResult, zoomToResults = true) => {
     setSearchResults(result.items);
-    setSelectedFootprints({});
+    setSelectedFootprints(new Set());
     setFocusedItem(null);
     const throughThisPage = (result.currentPage - 1) * pageSize + result.items.length;
     setDiscovered(prev => throughThisPage >= prev.count ? { count: throughThisPage, hasMore: result.hasNext } : prev);
@@ -217,20 +217,17 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
   /**
    * Toggles the selection state of a STAC item footprint.
-   * Assigns a unique color from a predefined palette if selected, or frees the color if deselected.
-   * Automatically sets the map zoom bounds to the selected item.
+   * Toggles whether a STAC item is checked (in the cart).
+   * Automatically sets the map zoom bounds to the item when it is checked.
    * * @param {STACItem} item - The STAC item to toggle.
    */
   const handleToggleFootprint = (item: STACItem) => {
     setSelectedFootprints(prev => {
-      const next = { ...prev };
-      if (next[item.id]) {
-        delete next[item.id]; 
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
       } else {
-        const DISTINCT_COLORS = ['#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#42d4f4'];
-        const usedColors = new Set(Object.values(next));
-        const colorToUse = DISTINCT_COLORS.find(c => !usedColors.has(c)) || `hsl(${Math.random() * 360}, 100%, 45%)`;
-        next[item.id] = colorToUse; 
+        next.add(item.id);
 
         if(isMobile) {
           setRightOpen(false);
@@ -260,7 +257,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleOnResultsClear = () => {
     setSearchResults([]);
-    setSelectedFootprints({});
+    setSelectedFootprints(new Set());
     setActiveThumbnails({});
     setFocusedItem(null);
     setClearAoiTrigger(prev => prev + 1); // increment to trigger AOI clear effect. 
@@ -322,7 +319,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
 
     setSearchError(null);
-    setSelectedFootprints({});
+    setSelectedFootprints(new Set());
     setActiveThumbnails({});
     setFocusedItem(null);
     setDiscovered({ count: 0, hasMore: false });
@@ -616,7 +613,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             <ResultsPanel 
               results={searchResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} 
               isSearching={isSearching} selectedFootprints={selectedFootprints}
-              onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints({})} focusedItem={focusedItem} 
+              onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onClear={handleOnResultsClear}
               hasNext={pagingState.hasNext} hasPrevious={pagingState.hasPrevious} 

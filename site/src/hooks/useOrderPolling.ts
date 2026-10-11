@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import type { OrderInfo } from "../services/IOrderService";
 import { createOrderServiceByUrl } from "../services/OrderServiceFactory";
 
@@ -32,6 +32,10 @@ const scheduleNextCheck = (order: OrderInfo, previousAttempts = 0): OrderInfo =>
  * @returns all active orders, boolean flag to determine if ordering is supported, and function to trigger new orders. 
  */
 export function useOrderPolling(userId: string, authToken: string, stacUrl: string, getValidAuthToken: () => Promise<string>) {
+
+  // Lets in-flight requests detect a logout or user switch before writing results.
+  const currentUserId = useRef(userId);
+  currentUserId.current = userId;
 
   const [orders, setOrders] = useState<OrderInfo[]>(() => {
     if (!userId) return [];
@@ -84,6 +88,7 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     // Fire the array payload directly down to the service engine implementation
     const orderDate = new Date().toISOString();
     const rawData = await orderService.service.placeOrder(itemUuids, collection, await getValidAuthToken());
+    if (currentUserId.current !== userId) return null;
     
     // Transform into OrderInfo layout 
     const transformed = orderService.transform(rawData, itemUuids, orderKeys, collection);
@@ -177,6 +182,7 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
       );
 
       // Match by reference so orders added or removed during the requests are preserved.
+      if (currentUserId.current !== userId) return;
       setOrders((prevOrders) => {
         const updated = prevOrders.map((order) => updates.get(order) ?? order);
         localStorage.setItem(`orders_${userId}`, JSON.stringify(updated));
