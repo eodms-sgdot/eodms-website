@@ -13,6 +13,8 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  ButtonGroup,
+  Badge,
   Table,
   TableBody,
   TableCell,
@@ -106,23 +108,20 @@ const COLUMNS_STORAGE_KEY = "eodms.resultsColumns";
 /** The one nominated acquisition date column; always shown first and not user-removable. */
 const DATE_KEY = "datetime";
 
-/** Property columns offered first, and shown by default when the user has no saved choice. */
+/** Property columns offered first when the user has no saved choice. */
 const PREFERRED_COLUMNS = [
   "start_datetime", "beam_mode", "channel", "acquisition_orbit", "total_frames",
   "platform", "sar:product_type", "product_type", "sar:instrument_mode",
   "instrument_mode", "sat:orbit_state", "gsd",
 ];
-const MAX_DEFAULT_COLUMNS = 4;
-const HIDDEN_PROPERTIES = new Set(["order_key"]);
 
 const isTemporalKey = (key: string) => /datetime$|^created$|^updated$/.test(key);
 const columnLabel = (key: string) => key.split(":").pop()!.replace(/_/g, " ");
 
-const isScalar = (v: unknown) => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
-
 const formatCell = (key: string, value: unknown) => {
   if (value === null || value === undefined) return "";
-  if (Array.isArray(value)) return value.join(", ");
+  if (Array.isArray(value)) return value.map(entry => typeof entry === "object" ? JSON.stringify(entry) : String(entry)).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
   const text = String(value);
   return isTemporalKey(key) ? text.slice(0, 16).replace("T", " ") : text;
 };
@@ -443,9 +442,8 @@ export default function ResultsPanel({
   const candidateKeys = useMemo(() => {
     const found = new Set<string>();
     for (const item of results) {
-      for (const [key, value] of Object.entries(item.properties ?? {})) {
-        if (HIDDEN_PROPERTIES.has(key) || key === DATE_KEY) continue;
-        if (isScalar(value) || (Array.isArray(value) && value.every(isScalar))) found.add(key);
+      for (const key of Object.keys(item.properties ?? {})) {
+        if (key !== DATE_KEY) found.add(key);
       }
     }
     const preferred = PREFERRED_COLUMNS.filter(k => found.has(k));
@@ -456,8 +454,7 @@ export default function ResultsPanel({
     const saved = columnPrefs?.filter(k => candidateKeys.includes(k));
     // Saved favourites that this collection lacks fall back to the defaults.
     if (columnPrefs && (columnPrefs.length === 0 || saved!.length > 0)) return saved!;
-    const defaults = PREFERRED_COLUMNS.filter(k => candidateKeys.includes(k)).slice(0, MAX_DEFAULT_COLUMNS);
-    return defaults.length > 0 ? defaults : candidateKeys.slice(0, 3);
+    return candidateKeys;
   }, [columnPrefs, candidateKeys]);
 
   const saveColumns = (next: string[] | null) => {
@@ -741,16 +738,12 @@ export default function ResultsPanel({
       </TableCell>
     );
 
-    const dateKey = results.some(i => i.properties?.[DATE_KEY]) ? DATE_KEY : undefined;
+    const dateKey = results.some(i => Object.hasOwn(i.properties ?? {}, DATE_KEY)) ? DATE_KEY : undefined;
     const otherKeys = [...visibleKeys.filter(k => !isTemporalKey(k)), ...visibleKeys.filter(isTemporalKey)];
 
     return (
       <>
-      <Box sx={{ display: "flex", justifyContent: "flex-end", p: 0.5 }}>
-        <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnMenuEl(e.currentTarget)} sx={{ textTransform: "none" }}>
-          {t("columns")}
-        </Button>
-        <Menu anchorEl={columnMenuEl} open={!!columnMenuEl} onClose={() => setColumnMenuEl(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
+      <Menu anchorEl={columnMenuEl} open={!!columnMenuEl} onClose={() => setColumnMenuEl(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
           {dateKey && (
             <MenuItem dense disabled>
               <Checkbox size="small" edge="start" checked tabIndex={-1} disableRipple />
@@ -766,9 +759,12 @@ export default function ResultsPanel({
           <MenuItem dense divider={false} onClick={() => { saveColumns(null); setColumnMenuEl(null); }}>
             <ListItemText primary={t("resetColumns")} />
           </MenuItem>
-        </Menu>
-      </Box>
-      <Table size="small" stickyHeader sx={{ "& td, & th": { whiteSpace: "nowrap", py: 0.25, px: 0.75 }, "& .MuiTableCell-paddingCheckbox": { width: "auto", px: 0.25 } }}>
+      </Menu>
+      <Table size="small" stickyHeader sx={{
+        "& td, & th": { whiteSpace: "nowrap", py: 0.25, px: 0.75 },
+        "& th:nth-of-type(-n+4), & td:nth-of-type(-n+4)": { width: "1%", px: 0.25 },
+        "& .MuiTableCell-paddingCheckbox": { width: "1%", px: 0.25 },
+      }}>
         <TableHead>
           <TableRow>
             {sortCell("number", "#")}
@@ -918,26 +914,33 @@ export default function ResultsPanel({
 
       {cartItems.length > 0 && (
         <Box sx={{ px: 2, py: 0.5, display: "flex", alignItems: "center", gap: 1, bgcolor: alpha(brandColor, 0.08), borderBottom: 1, borderColor: "divider" }}>
-          <ShoppingCartIcon fontSize="small" color="primary" />
-          <Typography variant="body2" sx={{ fontWeight: 700, flexGrow: 1 }}>
-            {t("cart")} ({cartItems.length})
-          </Typography>
-          <Tooltip title={cartLoginBlocked ? t("loginToOrder") : t("downloadCartHover")}>
-            <span>
-              <IconButton size="small" aria-label={t("download")} disabled={cartBusy} onClick={handleCartDownload}>
-                {cartBusy ? <CircularProgress size={20} /> : <DownloadIcon fontSize="small" />}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
-            <span>
-              <IconButton size="small" aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(item => item.collection === 'Radarsat-1-FRED')} onClick={onProcessCart}>
-                <ScienceIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+            <Tooltip title={`${t("cart")} (${cartItems.length})`}>
+              <Badge badgeContent={cartItems.length} color="secondary" max={99} role="img" aria-label={`${t("cart")} (${cartItems.length})`}
+                sx={{ ml: 0.5, '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}>
+                <ShoppingCartIcon fontSize="small" color="primary" />
+              </Badge>
+            </Tooltip>
+            <ButtonGroup size="small" variant="outlined" aria-label={`${t('cart')} ${t('actions')}`}
+              sx={{ '& .MuiButtonGroup-grouped': { minWidth: 34, px: 0.5, py: 0.5 } }}>
+              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : t("downloadCartHover")}>
+                <span>
+                  <Button aria-label={t("download")} disabled={cartBusy} onClick={handleCartDownload}>
+                    {cartBusy ? <CircularProgress size={20} /> : <DownloadIcon fontSize="small" />}
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
+                <span>
+                  <Button aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(item => item.collection === 'Radarsat-1-FRED')} onClick={onProcessCart}>
+                    <ScienceIcon fontSize="small" />
+                  </Button>
+                </span>
+              </Tooltip>
+            </ButtonGroup>
+          </Box>
           <Tooltip title={t("emptyCartHover")}>
-            <Button size="small" onClick={onClearCart}>{t("clear")}</Button>
+            <Button size="small" onClick={onClearCart} sx={{ ml: 'auto' }}>{t("clear")}</Button>
           </Tooltip>
         </Box>
       )}
@@ -1087,11 +1090,10 @@ export default function ResultsPanel({
         )}
       </Box>
 
-      {(totalDiscoveredPages > 1 || hasNext) && (
+      {(totalDiscoveredPages > 1 || hasNext || (view === "table" && !isSearching && results.length > 0)) && (
         <Box
           sx={{
             display: "flex",
-            justifyContent: "center",
             alignItems: "center",
             gap: 0.5,
             mt: 1,
@@ -1099,6 +1101,7 @@ export default function ResultsPanel({
             flexWrap: "wrap",
           }}
         >
+          {(totalDiscoveredPages > 1 || hasNext) && <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5, flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
           <Tooltip title={t("previousHover")}>
             <IconButton
               size="small"
@@ -1135,6 +1138,12 @@ export default function ResultsPanel({
               <ChevronRightIcon />
             </IconButton>
           </Tooltip>
+          </Box>}
+          {view === "table" && !isSearching && results.length > 0 && (
+            <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnMenuEl(e.currentTarget)} sx={{ ml: "auto", flexShrink: 0, textTransform: "none" }}>
+              {t("columns")}
+            </Button>
+          )}
         </Box>
       )}
 
