@@ -21,6 +21,10 @@ import type { StacSearchParams, StacSearchResult } from '../services/StacSearchS
 import LogoutPanel from '../components/LogoutPanel';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import OrderPanel from '../components/OrderPanel';
+import ProcessingPanel from '../components/ProcessingPanel';
+import { useProcessingJobs } from '../hooks/useProcessingJobs';
+import type { ProcessingJob, ProcessingSubmission } from '../services/ProcessingService';
+import ScienceIcon from '@mui/icons-material/Science';
 import OrderReadyNotifier from '../components/OrderReadyNotifier';
 import PreferencesPanel from '../components/PreferencesPanel';
 import { useIsMobile, getInitials } from '../utils/RenderingUtils';
@@ -65,6 +69,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches);
   const [rightOpen, setRightOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
+  const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
+  const [processingReceipt, setProcessingReceipt] = useState<{ username: string; submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null>(null);
+  const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
+  const { jobs: processingJobs, error: processingJobsError, refreshJobs, registerJob, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
   const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
     experience.fixedCollectionId
@@ -257,6 +265,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleOnResultsClear = () => {
     setSearchResults([]);
+    setProcessingCandidateId(null);
     setSelectedFootprints(new Set());
     setActiveThumbnails({});
     setFocusedItem(null);
@@ -386,10 +395,13 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     handleSearch(searchBbox);
   };
 
-  const [openBlind, setOpenBlind] = useState<'orders' | 'preferences' | null>(null);
+  const [openBlind, setOpenBlind] = useState<'orders' | 'preferences' | 'processing' | null>(null);
   const isPreferencesOpen = openBlind === 'preferences';
   const isOrdersOpen = openBlind === 'orders';
-  const toggleBlind = (blind: 'orders' | 'preferences') => {
+  const isProcessingOpen = openBlind === 'processing';
+  const processingCandidates = searchResults.filter(item => selectedFootprints.has(item.id) && item.collection === 'Radarsat-1-FRED');
+  const processingCandidate = processingCandidates.find(item => item.id === processingCandidateId) ?? processingCandidates[0] ?? null;
+  const toggleBlind = (blind: 'orders' | 'preferences' | 'processing') => {
     setIsAuthOpen(false);
     setOpenBlind(current => current === blind ? null : blind);
   };
@@ -490,6 +502,16 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               </Tooltip>
             )}
 
+            {username && experience.id === 'eodms' && (
+              <Tooltip title={`${t('processingJobs')} (${processingJobs?.length ?? 0})`}>
+                <IconButton aria-label={`${t('processingJobs')} (${processingJobs?.length ?? 0})`} onClick={() => toggleBlind('processing')} sx={barButtonSx(isProcessingOpen)}>
+                  <Badge badgeContent={processingJobs?.length ?? 0} color="secondary" max={99}>
+                    <ScienceIcon fontSize="small" />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+            )}
+
             <Tooltip title={t('preferences')}>
               <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)}>
                 <SettingsIcon fontSize="small" />
@@ -537,9 +559,18 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             })()}
           </Blind>
           <OrderPanel 
+            key={username ?? 'guest'}
             open={isOrdersOpen}
             onClose={() => setOpenBlind(null)}
           />
+          {experience.id === 'eodms' && <ProcessingPanel key={`${username ?? 'guest'}:${processingCandidate?.id ?? 'none'}`} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId) => {
+            setProcessingReceipt(username ? { username, submission, job, processId, itemId } : null);
+            setSubmissionToastOpen(true);
+            registerJob(job);
+            void refreshJobs();
+            setSelectedFootprints(new Set());
+            setProcessingCandidateId(null);
+          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={() => { void refreshJobs(); }} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
         </Toolbar>
         <SkyBar />
       </AppBar>
@@ -612,6 +643,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <ResultsPanel 
               results={searchResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} 
+              onProcessCart={() => { setOpenBlind('processing'); setIsAuthOpen(false); }}
               isSearching={isSearching} selectedFootprints={selectedFootprints}
               onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
@@ -627,6 +659,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
       <Snackbar open={!!searchError} autoHideDuration={5000} onClose={() => setSearchError(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert onClose={() => setSearchError(null)} severity="error" sx={{ width: '100%' }}>{searchError}</Alert>
+      </Snackbar>
+      <Snackbar open={submissionToastOpen && processingReceipt?.username === username} autoHideDuration={15000}
+        onClose={(_, reason) => { if (reason !== 'clickaway') setSubmissionToastOpen(false); }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+        <Alert severity="success" variant="filled" onClose={() => setSubmissionToastOpen(false)}
+          action={<Button color="inherit" size="small" onClick={() => { setOpenBlind('processing'); setSubmissionToastOpen(false); }}>{t('processingJobs')}</Button>}>
+          {t('processingSubmitted')} (HTTP {processingReceipt?.submission.status})
+        </Alert>
       </Snackbar>
       <OrderReadyNotifier />
       <TermsOfUseDialog

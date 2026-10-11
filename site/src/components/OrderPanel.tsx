@@ -18,6 +18,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import ReplayIcon from "@mui/icons-material/Replay";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import { Fragment, useContext, useState } from "react";
 import { AppContext } from "../AppContext";
 import Blind from "./Blind";
@@ -32,7 +33,7 @@ export default function OrderPanel({
   onClose,
 }: OrderPanelProps) {
 
-  const { username, language, expireOrder, triggerNewOrder, t } = useContext(AppContext)!;
+  const { username, language, expireOrder, triggerNewOrder, clearOrderHistory, t } = useContext(AppContext)!;
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
@@ -333,7 +334,14 @@ export default function OrderPanel({
   return (
     <Blind open={open} onClose={onClose} align="right" width={600} disableEnforceFocus>
       <Box sx={{ px: 1, pb: 1 }}>
-        <Typography variant="h6" color="primary" gutterBottom>{t('orderHistory')}</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="h6" color="primary" gutterBottom>{t('orderHistory')}</Typography>
+          <Tooltip title={t('clearCompletedHistory')}>
+            <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
+              disabled={!localOrders.some(order => order.status === 'Available' || order.status === 'Failed')}
+              onClick={clearOrderHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+        </Box>
         {localOrders.length === 0 ? (
           <Typography
             variant="body2"

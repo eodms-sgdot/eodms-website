@@ -37,6 +37,10 @@ export default defineConfig(({ mode }) => {
           target: "https://eodms-sgdot.nrcan-rncan.gc.ca",
           changeOrigin: true,
         },
+        "/processing": {
+          target: "https://eodms-sgdot.nrcan-rncan.gc.ca",
+          changeOrigin: true,
+        },
       },
     },
   };

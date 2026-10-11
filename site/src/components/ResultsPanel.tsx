@@ -50,6 +50,7 @@ import TableRowsIcon from "@mui/icons-material/TableRows";
 import ImageIcon from "@mui/icons-material/Image";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import ScienceIcon from "@mui/icons-material/Science";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
@@ -107,8 +108,9 @@ const DATE_KEY = "datetime";
 
 /** Property columns offered first, and shown by default when the user has no saved choice. */
 const PREFERRED_COLUMNS = [
-  "start_datetime", "platform", "sar:product_type", "product_type",
-  "sar:instrument_mode", "instrument_mode", "sat:orbit_state", "gsd",
+  "start_datetime", "beam_mode", "channel", "acquisition_orbit", "total_frames",
+  "platform", "sar:product_type", "product_type", "sar:instrument_mode",
+  "instrument_mode", "sat:orbit_state", "gsd",
 ];
 const MAX_DEFAULT_COLUMNS = 4;
 const HIDDEN_PROPERTIES = new Set(["order_key"]);
@@ -149,6 +151,7 @@ interface ResultsPanelProps {
   onClose: () => void;
   /** Callback fired to zoom the map to a specific item's bounds */
   onZoom: (item: STACItem) => void;
+  onProcessCart: () => void;
   /** Boolean indicating if a network request is currently active */
   isSearching: boolean;
   /** Dictionary tracking which STAC Items are checked for footprint highlighting */
@@ -207,6 +210,7 @@ export default function ResultsPanel({
   results,
   onClose,
   onZoom,
+  onProcessCart,
   isSearching,
   selectedFootprints,
   onToggleFootprint,
@@ -920,9 +924,16 @@ export default function ResultsPanel({
           </Typography>
           <Tooltip title={cartLoginBlocked ? t("loginToOrder") : t("downloadCartHover")}>
             <span>
-              <Button size="small" variant="contained" startIcon={cartBusy ? <CircularProgress size={14} /> : <DownloadIcon />} disabled={cartBusy} onClick={handleCartDownload}>
-                {t("download")}
-              </Button>
+              <IconButton size="small" aria-label={t("download")} disabled={cartBusy} onClick={handleCartDownload}>
+                {cartBusy ? <CircularProgress size={20} /> : <DownloadIcon fontSize="small" />}
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
+            <span>
+              <IconButton size="small" aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(item => item.collection === 'Radarsat-1-FRED')} onClick={onProcessCart}>
+                <ScienceIcon fontSize="small" />
+              </IconButton>
             </span>
           </Tooltip>
           <Tooltip title={t("emptyCartHover")}>

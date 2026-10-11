@@ -133,6 +133,15 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     });
   }, [userId, authToken, orderService]);
 
+  const clearOrderHistory = useCallback(() => {
+    if (!userId) return;
+    setOrders((previous) => {
+      const remaining = previous.filter(isIncomplete);
+      localStorage.setItem(`orders_${userId}`, JSON.stringify(remaining));
+      return remaining;
+    });
+  }, [userId]);
+
   // Background polling: wake up when the earliest pending order is due.
   useEffect(() => {
     if (!userId || !authToken || !orderService) return;
@@ -198,5 +207,6 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     isOrderingSupported,
     triggerNewOrder,
     expireOrder,
+    clearOrderHistory,
   };
 }
