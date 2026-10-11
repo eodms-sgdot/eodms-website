@@ -3,7 +3,7 @@ import { createTheme } from "@mui/material";
 
 export type DisplayMode = "light" | "dark";
 
-/** Accent for checked (in-cart) results; deeper in light mode to keep link contrast. */
+/** Highlight for checked (in-cart) results; deeper in light mode to keep link contrast. */
 export const getHighlightColor = (mode: DisplayMode) => (mode === "dark" ? "#fbbf24" : "#b45309");
 
 export const lightMode = createTheme({

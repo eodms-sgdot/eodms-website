@@ -589,7 +589,7 @@ export default function ResultsPanel({
 
       return (
         <>
-          {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
+          {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} compact />}
           {action}
         </>
       );
