@@ -100,9 +100,12 @@ type SortKey = string;
 const VIEW_STORAGE_KEY = "eodms.resultsView";
 const COLUMNS_STORAGE_KEY = "eodms.resultsColumns";
 
+/** The one nominated acquisition date column; always shown first and not user-removable. */
+const DATE_KEY = "datetime";
+
 /** Property columns offered first, and shown by default when the user has no saved choice. */
 const PREFERRED_COLUMNS = [
-  "datetime", "start_datetime", "platform", "sar:product_type", "product_type",
+  "start_datetime", "platform", "sar:product_type", "product_type",
   "sar:instrument_mode", "instrument_mode", "sat:orbit_state", "gsd",
 ];
 const MAX_DEFAULT_COLUMNS = 4;
@@ -389,7 +392,7 @@ export default function ResultsPanel({
     const found = new Set<string>();
     for (const item of results) {
       for (const [key, value] of Object.entries(item.properties ?? {})) {
-        if (HIDDEN_PROPERTIES.has(key)) continue;
+        if (HIDDEN_PROPERTIES.has(key) || key === DATE_KEY) continue;
         if (isScalar(value) || (Array.isArray(value) && value.every(isScalar))) found.add(key);
       }
     }
@@ -686,16 +689,22 @@ export default function ResultsPanel({
       </TableCell>
     );
 
-    const dateKey = ["datetime", "start_datetime"].find(k => visibleKeys.includes(k));
-    const otherKeys = visibleKeys.filter(k => k !== dateKey);
+    const dateKey = results.some(i => i.properties?.[DATE_KEY]) ? DATE_KEY : undefined;
+    const otherKeys = [...visibleKeys.filter(k => !isTemporalKey(k)), ...visibleKeys.filter(isTemporalKey)];
 
     return (
       <>
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 0.5 }}>
+      <Box sx={{ display: "flex", justifyContent: "flex-end", p: 0.5 }}>
         <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnMenuEl(e.currentTarget)} sx={{ textTransform: "none" }}>
           {t("columns")}
         </Button>
         <Menu anchorEl={columnMenuEl} open={!!columnMenuEl} onClose={() => setColumnMenuEl(null)} slotProps={{ paper: { sx: { maxHeight: 360 } } }}>
+          {dateKey && (
+            <MenuItem dense disabled>
+              <Checkbox size="small" edge="start" checked tabIndex={-1} disableRipple />
+              <ListItemText primary={columnLabel(dateKey)} sx={{ textTransform: "capitalize" }} />
+            </MenuItem>
+          )}
           {candidateKeys.map(key => (
             <MenuItem key={key} dense onClick={() => toggleColumn(key)}>
               <Checkbox size="small" edge="start" checked={visibleKeys.includes(key)} tabIndex={-1} disableRipple />
@@ -855,7 +864,7 @@ export default function ResultsPanel({
         </Box>
       </Box>
 
-      <Box sx={{ p: 1, overflowY: "auto", flexGrow: 1 }}>
+      <Box sx={{ p: view === "table" && !isSearching && results.length > 0 ? 0 : 1, overflowY: "auto", flexGrow: 1 }}>
         {isSearching ? (
           Array.from(new Array(5)).map((_, i) => (
             <Card
