@@ -179,8 +179,8 @@ export default function SearchPanel({
 
     if(localStorage.getItem(fields.filters)) { 
       setSelectedCollections([]);
-   
       const sessionFilters = JSON.parse(localStorage.getItem(fields.filters) as string);
+
       Object.keys(sessionFilters).forEach((key) => {
         Object.values(collections).forEach((collection) => {
           if(collection.id === key) {

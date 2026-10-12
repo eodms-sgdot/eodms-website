@@ -1,5 +1,5 @@
 import { useState, useContext, useEffect, useRef } from 'react';
-import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge } from '@mui/material';
+import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlined';
@@ -106,6 +106,37 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     if (open && isMobile) setLeftOpen(false);
   };
   const firstName = username?.trim().split(/\s+/)[0];
+  const endpointMap = import.meta.env.VITE_EODMS_ENDPOINTS;
+  const directStacEndpoint = /^https?:\/\//i.test(stacEndpoint);
+  const activeStacOrigin = directStacEndpoint
+    ? new URL(stacEndpoint).origin
+    : import.meta.env.DEV ? endpointMap.eodmsDomain : window.location.origin;
+  const activeApiOrigin = import.meta.env.DEV ? endpointMap.eodmsDomain : activeStacOrigin;
+  const productionHostname = new URL(endpointMap.productionDomain).hostname.toLowerCase().replace(/^www\./, "");
+  const activeStacHostname = new URL(activeStacOrigin, window.location.origin).hostname.toLowerCase().replace(/^www\./, "");
+  const showStagingBadge = activeStacHostname !== productionHostname;
+  const effectiveSearchEndpoint = directStacEndpoint
+    ? stacEndpoint
+    : `${activeStacOrigin}${stacEndpoint.startsWith("/") ? "" : "/"}${stacEndpoint}`;
+  const effectiveNaplOrigin = import.meta.env.DEV
+    ? endpointMap.stagingDomain || activeApiOrigin
+    : activeStacOrigin;
+  const stagingEndpointTooltip = [
+    t("stagingEndpointTooltip"),
+    `${t("endpointAAA")}: ${activeApiOrigin}/aaa/v1`,
+    `${t("endpointSearch")}: ${effectiveSearchEndpoint}`,
+    `${t("endpointDDS")}: ${activeApiOrigin}/dds/v1/item`,
+    `${t("endpointProcessing")}: ${activeApiOrigin}/processing`,
+    `${t("endpointNapl")}: ${effectiveNaplOrigin}/napl/v1`,
+  ].join("\n");
+  const proxyEndpointTooltip = [
+    t("proxyEndpointTooltip"),
+    `${t("endpointAAA")}: /aaa/v1/* -> ${endpointMap.localAaaProxy}/aaa/v1/* -> ${endpointMap.eodmsDomain}/aaa/v1/*`,
+    `${t("endpointSearch")}: /search/* -> ${endpointMap.eodmsDomain}/search/*`,
+    `${t("endpointDDS")}: /dds/* -> ${endpointMap.eodmsDomain}/dds/*`,
+    `${t("endpointProcessing")}: /processing/* -> ${endpointMap.eodmsDomain}/processing/*`,
+    `${t("endpointNapl")}: /napl/v1/* -> ${endpointMap.stagingDomain}/napl/v1/*`,
+  ].join("\n");
 
   /**
    * Calculates the appropriate width for the Search & Result panels
@@ -474,6 +505,16 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 0 }}>
             <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
           </Typography>
+          {showStagingBadge && (
+            <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
+              <Chip label="STAGING" size="small" color="warning" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
+            </Tooltip>
+          )}
+          {import.meta.env.VITE_EODMS_SHOW_PROXY_BADGE && (
+            <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
+              <Chip label="PROXY" size="small" color="info" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
+            </Tooltip>
+          )}
 
           {/* empty to make widgets below align right */}
           <Box sx={{ flexGrow: 1 }}></Box>
@@ -652,6 +693,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               currentPage={pagingState.currentPage} totalDiscoveredPages={pagingState.totalDiscoveredPages} 
               onNextPage={handleNextPage} onPreviousPage={handlePreviousPage} onGoToPage={handleGoToPage} 
               numberMatched={numberMatched} userId={username} authToken={authToken} stacUrl={stacEndpoint}
+              experienceId={experience.id}
             />
           </Drawer>
         </Box>

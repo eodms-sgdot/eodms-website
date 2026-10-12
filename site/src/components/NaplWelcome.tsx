@@ -2,6 +2,7 @@ import { Box, Typography } from '@mui/material';
 import heroImage from '../assets/hero.png';
 import { AppContext } from '../AppContext';
 import { useContext } from 'react';
+import NaplContactInfo from './NaplContactInfo';
 
 export default function NaplWelcome() {
   const { t } = useContext(AppContext)!;
@@ -35,6 +36,9 @@ export default function NaplWelcome() {
       <Typography variant="body2" sx={{ p: 2, bgcolor: 'background.paper', lineHeight: 1.6 }}>
         {t('naplWelcomeBody')}
       </Typography>
+      <Box sx={{ px: 2, pb: 1.5, bgcolor: 'background.paper' }}>
+        <NaplContactInfo />
+      </Box>
     </Box>
   );
 }

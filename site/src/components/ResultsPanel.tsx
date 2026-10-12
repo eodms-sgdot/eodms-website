@@ -32,6 +32,11 @@ import {
   Link,
   LinearProgress,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
@@ -54,6 +59,9 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import ScienceIcon from "@mui/icons-material/Science";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
+import { getNaplOrderOptions, submitNaplOrder, type NaplOrderOptions } from "../services/NaplOrderService";
+import type { ExplorerExperience } from "../experiences";
+import NaplContactInfo from "./NaplContactInfo";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
 
@@ -70,6 +78,18 @@ const getDirectAssets = (item: STACItem): DownloadableAsset[] =>
     }))
     .sort((a, b) => a.rank - b.rank)
     .map(({ key, title, href }) => ({ key, title, href }));
+
+const getNaplItemLabel = (
+  item: STACItem,
+  labels: { roll: string; photo: string; unavailable: string },
+) => {
+  const roll = item.properties.roll_number;
+  const photo = item.properties.photo_number;
+  const hasRoll = roll !== null && roll !== undefined && String(roll).trim() !== "";
+  const hasPhoto = photo !== null && photo !== undefined && String(photo).trim() !== "";
+  if (!hasRoll && !hasPhoto) return labels.unavailable;
+  return `${labels.roll} ${hasRoll ? String(roll) : "-"} / ${labels.photo} ${hasPhoto ? String(photo) : "-"}`;
+};
 
 const readyPulse = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.6); }
@@ -110,7 +130,7 @@ const DATE_KEY = "datetime";
 
 /** Property columns offered first when the user has no saved choice. */
 const PREFERRED_COLUMNS = [
-  "start_datetime", "beam_mode", "channel", "acquisition_orbit", "total_frames",
+  "roll_number", "photo_number", "start_datetime", "beam_mode", "channel", "acquisition_orbit", "total_frames",
   "platform", "sar:product_type", "product_type", "sar:instrument_mode",
   "instrument_mode", "sat:orbit_state", "gsd",
 ];
@@ -192,6 +212,7 @@ interface ResultsPanelProps {
   numberMatched: number | null;
   /** The current active STAC Catalog URL target */
   stacUrl: string;
+  experienceId: ExplorerExperience["id"];
   /** The user id or user name for the current user logged.  */
   userId: string | null;
   /** The token returned from authentication service */
@@ -229,7 +250,8 @@ export default function ResultsPanel({
   onPreviousPage,
   onGoToPage,
   numberMatched,
-  userId
+  userId,
+  experienceId,
 }: ResultsPanelProps) {
   const [activeMetadata, setActiveMetadata] = useState<STACItem | null>(null);
   const [view, setView] = useState<ResultsView>(() =>
@@ -240,7 +262,7 @@ export default function ResultsPanel({
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
-  const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint} = useContext(AppContext)!;
+  const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint, authToken, getValidAuthToken } = useContext(AppContext)!;
   
   // Tracks multiple item IDs currently ordered. 
   const [itemsLoading, setItemsLoading] = useState<Record<string, boolean>>({});
@@ -286,11 +308,104 @@ export default function ResultsPanel({
   // The cart is the set of checked results; it empties whenever the results change.
   const cartItems = useMemo(() => results.filter(i => selectedFootprints.has(i.id)), [results, selectedFootprints]);
   const [cartBusy, setCartBusy] = useState(false);
+  const isNaplExperience = experienceId === "napl";
+  const [naplOptions, setNaplOptions] = useState<NaplOrderOptions | null>(null);
+  const [naplTargetItems, setNaplTargetItems] = useState<STACItem[]>([]);
+  const [naplDialogOpen, setNaplDialogOpen] = useState(false);
+  const [naplOptionsLoading, setNaplOptionsLoading] = useState(false);
+  const [naplSubmitting, setNaplSubmitting] = useState(false);
+  const [naplError, setNaplError] = useState<string | null>(null);
+  const [naplMediaType, setNaplMediaType] = useState("");
+  const [naplFileFormat, setNaplFileFormat] = useState("");
+  const [naplResolution, setNaplResolution] = useState("");
+  const [naplConfirmation, setNaplConfirmation] = useState<{
+    orderId?: string;
+    itemLabels: string[];
+    mediaType: string;
+    fileFormat: string;
+    imageResolution: number;
+  } | null>(null);
+  const [naplNotice, setNaplNotice] = useState<string | null>(null);
+  const [cartError, setCartError] = useState<string | null>(null);
   const needsLogin = (item: STACItem) => !!item.assets.product && !(item.assets.product.href && !item.assets.product["auth:refs"]);
-  const cartLoginBlocked = !userId && cartItems.some(needsLogin);
+  const cartLoginBlocked = isNaplExperience
+    ? (!userId || !authToken) && cartItems.some(item => !item.assets.product || needsLogin(item))
+    : !userId && cartItems.some(needsLogin);
+
+  const handleCartToggle = (item: STACItem) => {
+    if (isNaplExperience && !selectedFootprints.has(item.id) && cartItems.length > 0
+      && !!cartItems[0].assets.product !== !!item.assets.product) {
+      setCartError(t("naplCartMixBlocked"));
+      return;
+    }
+    setCartError(null);
+    onToggleFootprint(item);
+  };
+
+  const openNaplOrder = async (items: STACItem[]) => {
+    if (items.length > 100) {
+      setNaplError(t("naplOrderLimit"));
+      setNaplDialogOpen(true);
+      return;
+    }
+    setNaplTargetItems(items);
+    setNaplDialogOpen(true);
+    setNaplError(null);
+    if (naplOptions) return;
+
+    setNaplOptionsLoading(true);
+    try {
+      const options = await getNaplOrderOptions();
+      setNaplOptions(options);
+      setNaplMediaType(options.media_types[0] ?? "");
+      setNaplFileFormat(options.file_formats[0] ?? "");
+      setNaplResolution(String(options.image_resolutions[0] ?? ""));
+    } catch (error) {
+      setNaplError(error instanceof Error ? error.message : t("naplOptionsUnavailable"));
+    } finally {
+      setNaplOptionsLoading(false);
+    }
+  };
+
+  const handleNaplSubmit = async () => {
+    if (!naplMediaType || !naplFileFormat || !naplResolution || !authToken) return;
+    setNaplSubmitting(true);
+    setNaplError(null);
+    try {
+      const response = await submitNaplOrder(naplTargetItems.map(item => item.id), {
+        media_type: naplMediaType,
+        file_format: naplFileFormat,
+        image_resolution: Number(naplResolution),
+      }, await getValidAuthToken());
+      const orderId = response.order_id ? ` (${response.order_id})` : "";
+      setNaplConfirmation({
+        orderId: response.order_id ? String(response.order_id) : undefined,
+        itemLabels: naplTargetItems.map(item => getNaplItemLabel(item, {
+          roll: t("naplRollLabel"),
+          photo: t("naplPhotoLabel"),
+          unavailable: t("naplRollPhotoUnavailable"),
+        })),
+        mediaType: naplMediaType,
+        fileFormat: naplFileFormat,
+        imageResolution: Number(naplResolution),
+      });
+      setNaplNotice(`${t("naplOrderSubmitted")}${orderId}`);
+      setNaplDialogOpen(false);
+      if (naplTargetItems.some(item => selectedFootprints.has(item.id))) onClearCart();
+    } catch (error) {
+      setNaplError(error instanceof Error ? error.message : t("errorOrderSubmitFailed"));
+    } finally {
+      setNaplSubmitting(false);
+    }
+  };
 
   /** Applies each item's Prepare download rules: open a ready download, or submit one DDS order per item. */
   const handleCartDownload = async () => {
+    if (isNaplExperience && !cartItems[0]?.assets.product) {
+      await openNaplOrder(cartItems);
+      return;
+    }
+
     let handled = 0;
     const toOrder: STACItem[] = [];
     setCartBusy(true);
@@ -453,9 +568,11 @@ export default function ResultsPanel({
   const visibleKeys = useMemo(() => {
     const saved = columnPrefs?.filter(k => candidateKeys.includes(k));
     // Saved favourites that this collection lacks fall back to the defaults.
-    if (columnPrefs && (columnPrefs.length === 0 || saved!.length > 0)) return saved!;
-    return candidateKeys;
-  }, [columnPrefs, candidateKeys]);
+    const selected = columnPrefs && (columnPrefs.length === 0 || saved!.length > 0) ? saved! : candidateKeys;
+    if (!isNaplExperience) return selected;
+    const naplFirst = ["roll_number", "photo_number"].filter(key => candidateKeys.includes(key));
+    return [...naplFirst, ...selected.filter(key => !naplFirst.includes(key))];
+  }, [columnPrefs, candidateKeys, isNaplExperience]);
 
   const saveColumns = (next: string[] | null) => {
     setColumnPrefs(next);
@@ -508,7 +625,15 @@ export default function ResultsPanel({
       const openOrder = (o: NonNullable<typeof associatedOrder>) => handleOrderLink(o.orderId, o.downloadUrl ?? null);
       let action = null;
 
-      if (isOrderingSupported && canOrderItem) {
+      if (isNaplExperience && !canOrderItem) {
+        action = (
+          <Tooltip title={userId && authToken ? t("naplOrderAction") : t("loginToOrder")}>
+            <span><IconButton size="small" color="primary" disabled={!userId || !authToken} aria-label={t("naplOrderAction")} onClick={() => void openNaplOrder([item])}>
+              <Inventory2Icon fontSize="small" />
+            </IconButton></span>
+          </Tooltip>
+        );
+      } else if (isOrderingSupported && canOrderItem) {
         if (directDownload && !loginRequired) {
           action = (
             <Tooltip title={t("download")}>
@@ -599,7 +724,11 @@ export default function ResultsPanel({
     return (
       <>
         {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
-        {isOrderingSupported && (
+        {isNaplExperience && !canOrderItem ? (
+            <Button size="small" variant="outlined" startIcon={<Inventory2Icon />} disabled={!userId || !authToken} onClick={() => void openNaplOrder([item])}>
+              {t("naplOrderAction")}
+            </Button>
+        ) : isOrderingSupported && (
           <>
             {!canOrderItem ? (
               null
@@ -801,7 +930,7 @@ export default function ResultsPanel({
                   <Checkbox
                     size="small"
                     checked={isSelected}
-                    onChange={() => onToggleFootprint(item)}
+                    onChange={() => handleCartToggle(item)}
                     slotProps={{ input: { "aria-label": label } }}
                     sx={{ p: 0.25, "&.Mui-checked": { color: highlightColor } }}
                   />
@@ -923,20 +1052,20 @@ export default function ResultsPanel({
             </Tooltip>
             <ButtonGroup size="small" variant="outlined" aria-label={`${t('cart')} ${t('actions')}`}
               sx={{ '& .MuiButtonGroup-grouped': { minWidth: 34, px: 0.5, py: 0.5 } }}>
-              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : t("downloadCartHover")}>
+              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : isNaplExperience ? `${t("naplOrderSelected")} (${cartItems.length})` : t("downloadCartHover")}>
                 <span>
-                  <Button aria-label={t("download")} disabled={cartBusy} onClick={handleCartDownload}>
-                    {cartBusy ? <CircularProgress size={20} /> : <DownloadIcon fontSize="small" />}
+                  <Button aria-label={isNaplExperience ? `${t("naplOrderSelected")} (${cartItems.length})` : t("download")} disabled={cartBusy || cartLoginBlocked} onClick={handleCartDownload}>
+                    {cartBusy ? <CircularProgress size={20} /> : isNaplExperience ? <Inventory2Icon fontSize="small" /> : <DownloadIcon fontSize="small" />}
                   </Button>
                 </span>
               </Tooltip>
-              <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
+              {!isNaplExperience && <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
                 <span>
                   <Button aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(item => item.collection === 'Radarsat-1-FRED')} onClick={onProcessCart}>
                     <ScienceIcon fontSize="small" />
                   </Button>
                 </span>
-              </Tooltip>
+              </Tooltip>}
             </ButtonGroup>
           </Box>
           <Tooltip title={t("emptyCartHover")}>
@@ -1053,7 +1182,7 @@ export default function ResultsPanel({
                   <Checkbox
                     size="small"
                     checked={isSelected}
-                    onChange={() => onToggleFootprint(item)}
+                    onChange={() => handleCartToggle(item)}
                     sx={{ p: 0.5, "&.Mui-checked": { color: highlightColor } }}
                   />
 
@@ -1146,6 +1275,87 @@ export default function ResultsPanel({
           )}
         </Box>
       )}
+
+      <Dialog open={naplDialogOpen} onClose={() => !naplSubmitting && setNaplDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t("naplOrderTitle")}</DialogTitle>
+        <DialogContent dividers sx={{ display: "grid", gap: 2, pt: 2 }}>
+          {naplError && <Alert severity="error">{naplError}</Alert>}
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              {naplTargetItems.length} {t("itemId")}{naplTargetItems.length === 1 ? "" : "s"}
+            </Typography>
+            <Box sx={{ maxHeight: 112, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
+              {naplTargetItems.map(item => (
+                <Typography key={item.id} variant="caption" component="div" noWrap title={item.id}>
+                  {getNaplItemLabel(item, {
+                    roll: t("naplRollLabel"),
+                    photo: t("naplPhotoLabel"),
+                    unavailable: t("naplRollPhotoUnavailable"),
+                  })}
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+          {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && <>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="napl-media-type-label">{t("naplMediaType")}</InputLabel>
+              <Select labelId="napl-media-type-label" label={t("naplMediaType")} value={naplMediaType} onChange={event => setNaplMediaType(event.target.value)}>
+                {naplOptions.media_types.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="napl-file-format-label">{t("naplFileFormat")}</InputLabel>
+              <Select labelId="napl-file-format-label" label={t("naplFileFormat")} value={naplFileFormat} onChange={event => setNaplFileFormat(event.target.value)}>
+                {naplOptions.file_formats.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="napl-image-resolution-label">{t("naplImageResolution")}</InputLabel>
+              <Select labelId="napl-image-resolution-label" label={t("naplImageResolution")} value={naplResolution} onChange={event => setNaplResolution(event.target.value)}>
+                {naplOptions.image_resolutions.map(value => <MenuItem key={value} value={String(value)}>{value}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNaplDialogOpen(false)} disabled={naplSubmitting}>{t("cancel")}</Button>
+          <Button variant="contained" onClick={() => void handleNaplSubmit()} disabled={naplSubmitting || naplOptionsLoading || !naplOptions || !userId || !authToken || !naplMediaType || !naplFileFormat || !naplResolution}>
+            {naplSubmitting ? <CircularProgress size={18} /> : t("naplOrderAction")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar open={!!naplNotice} autoHideDuration={6000} onClose={() => setNaplNotice(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="success" onClose={() => setNaplNotice(null)}>{naplNotice}</Alert>
+      </Snackbar>
+      <Dialog open={!!naplConfirmation} onClose={() => setNaplConfirmation(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t("naplOrderSubmitted")}</DialogTitle>
+        <DialogContent dividers sx={{ display: "grid", gap: 1.5 }}>
+          <Alert severity="success">{t("naplCheckEmail")}</Alert>
+          <Typography variant="body2">{t("naplOrderFollowup")}</Typography>
+          {naplConfirmation && <>
+            <Typography variant="subtitle2">{t("naplOrderSummary")}</Typography>
+            {naplConfirmation.orderId && <Typography variant="body2">{t("orderId")}: {naplConfirmation.orderId}</Typography>}
+            <Typography variant="body2">{naplConfirmation.itemLabels.length} {t("itemId")}{naplConfirmation.itemLabels.length === 1 ? "" : "s"}</Typography>
+            <Box sx={{ maxHeight: 128, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
+              {naplConfirmation.itemLabels.map((label, index) => (
+                <Typography key={`${label}-${index}`} variant="caption" component="div" noWrap title={label}>{label}</Typography>
+              ))}
+            </Box>
+            <Typography variant="body2">{t("naplMediaType")}: {naplConfirmation.mediaType}</Typography>
+            <Typography variant="body2">{t("naplFileFormat")}: {naplConfirmation.fileFormat}</Typography>
+            <Typography variant="body2">{t("naplImageResolution")}: {naplConfirmation.imageResolution}</Typography>
+            <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: "divider" }}>
+              <NaplContactInfo />
+            </Box>
+          </>}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setNaplConfirmation(null)}>{t("close")}</Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar open={!!cartError} autoHideDuration={5000} onClose={() => setCartError(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="warning" onClose={() => setCartError(null)}>{cartError}</Alert>
+      </Snackbar>
 
       <Dialog
         open={!!activeMetadata}

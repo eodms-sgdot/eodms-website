@@ -33,6 +33,24 @@ Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS Search
 service. Production builds retain those relative paths; the production host is
 responsible for serving them.
 
+For local development, copy `.env.example` to `.env.local`:
+
+```cmd
+cd site
+copy .env.example .env.local
+```
+
+`EODMS_TARGET_ENV=staging` selects the upstream for local AAA, search, DDS, and
+processing requests. Change it to `production` to switch those routes to the
+production domain. `/napl` always targets staging. Restart Vite and the local
+AAA proxy after changing the setting. Local environment files are ignored by
+Git; update `.env.example` when adding configuration variables. Staging builds
+and deployments use the relative `/napl/v1` URL directly and do not need the
+local proxy or domain variables.
+
+Set `EODMS_SHOW_PROXY_BADGE=true` in `.env.local` to show the optional `PROXY`
+badge in the app bar; the source-controlled template defaults it to `false`.
+
 ## Production Build
 
 Build the frontend with:

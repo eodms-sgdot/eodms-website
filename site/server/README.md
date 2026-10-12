@@ -1,7 +1,9 @@
 # Local AAA Proxy
 
 The local server is used only by Vite development mode. It proxies the same
-relative AAA routes used in production, avoiding browser CORS requirements.
+relative AAA routes used in production, avoiding browser CORS requirements. It
+reads `../.env.local`; set `EODMS_TARGET_ENV` to `staging` or `production` to
+choose the AAA upstream. Restart the server after changing the environment.
 
 ```cmd
 cd site\server

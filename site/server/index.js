@@ -5,6 +5,24 @@
  */
 const axios = require('axios')
 const express = require('express')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const localEnvFile = path.resolve(__dirname, '../.env.local')
+if (fs.existsSync(localEnvFile)) process.loadEnvFile(localEnvFile)
+
+const targetEnvironment = (process.env.EODMS_TARGET_ENV || 'staging').toLowerCase()
+if (!['staging', 'production'].includes(targetEnvironment)) {
+    throw new Error('EODMS_TARGET_ENV must be either staging or production')
+}
+
+const configuredDomain = targetEnvironment === 'production'
+    ? process.env.EODMS_PRODUCTION_DOMAIN || 'https://eodms-sgdot.nrcan-rncan.gc.ca'
+    : process.env.EODMS_STAGING_DOMAIN
+if (!configuredDomain) {
+    throw new Error('Set EODMS_STAGING_DOMAIN in site/.env.local for local staging AAA proxying')
+}
+const eodmsDomain = configuredDomain.replace(/\/+$/, '')
 
 const app = express()
 
@@ -17,7 +35,7 @@ app.post('/aaa/v1/login', (req, res) => {
 
     // post to AAA endpoint
     axios.post(
-        'https://eodms-sgdot.nrcan-rncan.gc.ca/aaa/v1/login',
+        `${eodmsDomain}/aaa/v1/login`,
         req.body
     ).then(response => {
         res.send(response.data) // return the entire response body
@@ -35,7 +53,7 @@ app.get('/aaa/v1/refresh', (req, res) => {
 
     // send to AAA endpoint
     axios.get(
-        'https://eodms-sgdot.nrcan-rncan.gc.ca/aaa/v1/refresh',
+        `${eodmsDomain}/aaa/v1/refresh`,
         {
             headers: {Authorization : req.headers['authorization']}
         }
