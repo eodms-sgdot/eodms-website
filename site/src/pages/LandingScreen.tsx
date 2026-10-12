@@ -152,17 +152,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
   }
 
-  const searchService = useRef<StacSearchService | null>(null);
-  if (!searchService.current) {
-    searchService.current = new StacSearchService(stacEndpoint, setSupportsSorting, setSupportsSearch);
-  }
+  const [searchService] = useState(() => new StacSearchService(stacEndpoint, setSupportsSorting, setSupportsSearch));
 
   // Keep the endpoint in sync; the service already checked the initial endpoint on creation.
   const lastEndpoint = useRef(stacEndpoint);
   useEffect(() => {
     if (lastEndpoint.current === stacEndpoint) return;
     lastEndpoint.current = stacEndpoint;
-    searchService.current!.setEndpoint(stacEndpoint, setSupportsSorting, setSupportsSearch);
+    searchService.setEndpoint(stacEndpoint, setSupportsSorting, setSupportsSearch);
   }, [stacEndpoint]);
 
   useEffect(() => {
@@ -223,7 +220,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleNextPage = async () => {
     try {
-      const result = await searchService.current.nextPage(await getHeaders());
+      const result = await searchService.nextPage(await getHeaders());
       handleSearchResult(result);
     } catch {
       setSearchError(t('errorFetch'));
@@ -235,7 +232,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handlePreviousPage = async () => {
     try {
-      const result = await searchService.current.previousPage(await getHeaders());
+      const result = await searchService.previousPage(await getHeaders());
       handleSearchResult(result);
     } catch {
       setSearchError(t('errorFetch'));
@@ -247,7 +244,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleGoToPage = async (page: number) => {
     try {
-      const result = await searchService.current.goToPage(page, await getHeaders());
+      const result = await searchService.goToPage(page, await getHeaders());
       handleSearchResult(result);
     } catch {
       setSearchError(t('errorFetch'));
@@ -306,7 +303,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
     setNumberMatched(null);
     setDiscovered({ count: 0, hasMore: false });
-    searchService.current.reset();
+    searchService.reset();
   }; 
 
   /**
@@ -404,10 +401,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     showRightPanel(true);
 
     try {
-      const result = await searchService.current.search(params, await getHeaders());
+      const result = await searchService.search(params, await getHeaders());
       setPageSize(params.limit);
       handleSearchResult(result, zoomToResults);
-      setNumberMatched(searchService.current.getNumberMatched());
+      setNumberMatched(searchService.getNumberMatched());
     } catch (e) {
       if (axios.isCancel(e)) return;
       setSearchError(t('errorFetch'));
@@ -616,7 +613,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={<OrbitLoader />} onCancel={() => searchService.current.cancel()} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} indicator={<OrbitLoader />} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
