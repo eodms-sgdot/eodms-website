@@ -485,7 +485,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           >
             <Box
               component="img"
-              src={`${import.meta.env.BASE_URL}gc/sig-blk-${language}.svg`}
+              src="https://www.eodms-sgdot.nrcan-rncan.gc.ca/GCWeb/assets/sig-spl.svg"
               alt={t('governmentOfCanada')}
               sx={{
                 height: 22,
