@@ -160,7 +160,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     if (lastEndpoint.current === stacEndpoint) return;
     lastEndpoint.current = stacEndpoint;
     searchService.setEndpoint(stacEndpoint, setSupportsSorting, setSupportsSearch);
-  }, [stacEndpoint]);
+  }, [searchService, stacEndpoint]);
 
   useEffect(() => {
     const timer = setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 300);
