@@ -35,6 +35,24 @@ function clearUnrefreshableSession() {
 }
 clearUnrefreshableSession();
 
+function getInitialStacEndpoint(fallback: string): string {
+  const savedEndpoint = localStorage.getItem(fields.stacEndpoint);
+  if (!savedEndpoint) return fallback;
+
+  const endpoint = savedEndpoint.trim();
+  if (endpoint.startsWith("/")) return endpoint;
+
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return endpoint;
+  } catch {
+    // Fall back to the configured endpoint for malformed saved values.
+  }
+
+  localStorage.removeItem(fields.stacEndpoint);
+  return fallback;
+}
+
 function DocumentTitle({ language }: { language: Language }) {
   const location = useLocation();
 
@@ -75,7 +93,7 @@ export default function App() {
 
   const [bbox, setBbox] = useState<string | null>(() => localStorage.getItem(fields.bbox));
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(fields.username));
-  const [stacEndpoint, setStacEndpoint] = useState(() => localStorage.getItem(fields.stacEndpoint) ?? initialEndpoint);
+  const [stacEndpoint, setStacEndpoint] = useState(() => getInitialStacEndpoint(initialEndpoint));
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem(fields.token));
   const [authExpiry, setAuthExpiry] = useState<string | null>(() => localStorage.getItem(fields.expiry));
   const [refreshToken, setRefreshToken] = useState<string | null>(() => localStorage.getItem(fields.refreshToken));
