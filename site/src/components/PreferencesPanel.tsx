@@ -239,7 +239,7 @@ export default function PreferencesPanel({
           </TableBody>
         </Table>
         <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 1, textAlign: "right" }}>
-          {t("version")} {import.meta.env.VITE_APP_VERSION}
+          {t("version")} {import.meta.env.VITE_APP_VERSION} | {t("buildId")} {import.meta.env.VITE_BUILD_ID}
         </Typography>
       </Box>
     </Blind>
