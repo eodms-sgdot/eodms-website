@@ -339,6 +339,7 @@ export default function OrderPanel({
           <Tooltip title={t('clearCompletedHistory')}>
             <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
               disabled={!localOrders.some(order => order.status === 'Available' || order.status === 'Failed')}
+              color={localOrders.some(order => order.status === 'Available' || order.status === 'Failed') ? 'error' : 'default'}
               onClick={clearOrderHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         </Box>

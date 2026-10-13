@@ -58,6 +58,7 @@ import ImageIcon from "@mui/icons-material/Image";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import ScienceIcon from "@mui/icons-material/Science";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
 import { getNaplOrderOptions, submitNaplOrder, type NaplOrderOptions } from "../services/NaplOrderService";
 import type { ExplorerExperience } from "../experiences";
@@ -254,6 +255,7 @@ export default function ResultsPanel({
   experienceId,
 }: ResultsPanelProps) {
   const [activeMetadata, setActiveMetadata] = useState<STACItem | null>(null);
+  const [sourceCopyNotice, setSourceCopyNotice] = useState<"success" | "error" | null>(null);
   const [view, setView] = useState<ResultsView>(() =>
     localStorage.getItem(VIEW_STORAGE_KEY) === "table" ? "table" : "cards");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "number", dir: "asc" });
@@ -599,13 +601,27 @@ export default function ResultsPanel({
     return rawUrl;
   }
 
-  const openItemSource = (item: STACItem) => {
-    if(item) {
-      const itemUrl = item.links.find(link => link.rel.includes('self') && link.type.includes('json'))?.href;
-      
-      if(itemUrl) {
-        window.open(itemUrl, "_blank", "noopener,noreferrer");
+  const copyItemSource = async (item: STACItem) => {
+    const json = JSON.stringify(item, null, 2);
+    try {
+      try {
+        await navigator.clipboard.writeText(json);
+      } catch {
+        const textArea = document.createElement("textarea");
+        textArea.value = json;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textArea);
+        if (!copied) throw new Error("Clipboard copy failed");
       }
+      setSourceCopyNotice("success");
+    } catch {
+      setSourceCopyNotice("error");
     }
   }
 
@@ -1380,10 +1396,13 @@ export default function ResultsPanel({
           </Table>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center" }}>
+          {activeMetadata && (isNaplExperience
+            ? !activeMetadata.assets.product
+            : isOrderingSupported && !!activeMetadata.assets.product) && renderOrderActions(activeMetadata)}
             {activeMetadata && 
-              (<Tooltip title={t("viewSourceTooltip")}>
-                <Button variant="contained" onClick={() => openItemSource(activeMetadata)}>
-                  {t("viewSource")}
+              (<Tooltip title={t("copyStacJsonTooltip")}>
+                <Button variant="contained" startIcon={<ContentCopyIcon />} onClick={() => void copyItemSource(activeMetadata)}>
+                  {t("copyStacJson")}
                 </Button>
               </Tooltip>
             )}
@@ -1394,6 +1413,11 @@ export default function ResultsPanel({
           </Tooltip>
         </DialogActions>
       </Dialog>
+      <Snackbar open={!!sourceCopyNotice} autoHideDuration={4000} onClose={() => setSourceCopyNotice(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity={sourceCopyNotice === "success" ? "success" : "error"} onClose={() => setSourceCopyNotice(null)}>
+          {sourceCopyNotice === "success" ? t("stacJsonCopied") : t("stacJsonCopyFailed")}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

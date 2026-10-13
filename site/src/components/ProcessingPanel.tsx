@@ -202,6 +202,7 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
             <Tooltip title={t('clearCompletedHistory')}>
               <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
                 disabled={!jobs?.some(job => job.status !== 'accepted' && job.status !== 'running')}
+                color={jobs?.some(job => job.status !== 'accepted' && job.status !== 'running') ? 'error' : 'default'}
                 onClick={onClearHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
             </Tooltip>
             <Tooltip title={t('processingRefresh')}>

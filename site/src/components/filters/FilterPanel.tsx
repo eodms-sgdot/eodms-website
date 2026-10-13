@@ -60,6 +60,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         filters,
         setFilters,
         authToken,
+        getValidAuthToken,
         t
     } = useContext(AppContext)!;
 
@@ -137,7 +138,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     const queryablesUrl = collection.links.find(link => link.rel.includes('queryables') && link.type.includes('json'))?.href;
 
                     if(queryablesUrl) {
-                        const queryables:Record<string, STACQueryable> = await getQueryables(queryablesUrl, authToken);
+                        const queryablesToken = authToken ? await getValidAuthToken() : null;
+                        const queryables:Record<string, STACQueryable> = await getQueryables(queryablesUrl, queryablesToken);
                         queryablesMap.set(collectionName, queryables);
                     }
                 }
@@ -151,7 +153,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         };
 
         fetchFilters();
-    }, [stacEndpoint, authToken, selectedCollections, queryablesMap]);
+    }, [stacEndpoint, authToken, getValidAuthToken, selectedCollections, queryablesMap]);
 
     return (
         <Box sx={{width: '100%', height: '100%', overflowY: 'auto', p: 1}}>

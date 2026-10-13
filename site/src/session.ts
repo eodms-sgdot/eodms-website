@@ -22,4 +22,5 @@ export const fields = {
     refreshToken: "refresh-token",
     refreshExpiry: "refresh-token-expiry",
     bbox: "bbox",
+    collectionsCache: "collections-cache",
 }

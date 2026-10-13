@@ -112,6 +112,12 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
     });
     
     map.addControl(drawControl);
+    const deleteButton = drawControl.getContainer()?.querySelector<HTMLAnchorElement>('.leaflet-draw-edit-remove');
+    const updateDeleteButtonState = () => {
+      deleteButton?.classList.toggle('stac-delete-available', drawnItems.getLayers().length > 0);
+    };
+    drawnItems.on('layeradd layerremove', updateDeleteButtonState);
+    updateDeleteButtonState();
 
     const drawToolbar = drawControl.getContainer()?.querySelector('.leaflet-draw-toolbar');
     if (drawToolbar instanceof HTMLElement) {
@@ -156,6 +162,7 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
     map.on(L.Draw.Event.DELETED, onDrawDeleted);
     
     return () => { 
+      drawnItems.off('layeradd layerremove', updateDeleteButtonState);
       map.removeControl(drawControl); 
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
@@ -346,6 +353,28 @@ const footprintStyles = (
       transformOrigin: 'left center',
       animation: 'stacFootprintIn 200ms ease-out both',
       transition: 'filter 120ms ease',
+    },
+    '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available': {
+      backgroundImage: 'none',
+      position: 'relative',
+    },
+    '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available::after': {
+      content: '""',
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      width: 18,
+      height: 18,
+      transform: 'translate(-50%, -50%)',
+      backgroundColor: '#d32f2f',
+      maskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 9h2v9H8zm6 0h2v9h-2zM18 4h-3.5l-1-1h-5l-1 1H5v2h14V4zM6 7v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6z'/%3E%3C/svg%3E\")",
+      maskRepeat: 'no-repeat',
+      maskPosition: 'center',
+      maskSize: 'contain',
+      WebkitMaskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 9h2v9H8zm6 0h2v9h-2zM18 4h-3.5l-1-1h-5l-1 1H5v2h14V4zM6 7v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6z'/%3E%3C/svg%3E\")",
+      WebkitMaskRepeat: 'no-repeat',
+      WebkitMaskPosition: 'center',
+      WebkitMaskSize: 'contain',
     },
     '.stac-search-here:hover .chip, .stac-search-here:focus-visible .chip': { filter: 'brightness(1.15)' },
     '@media (prefers-reduced-motion: reduce)': {

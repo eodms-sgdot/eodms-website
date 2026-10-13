@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useContext, useCallback, useRef } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge } from '@mui/material';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge, Alert } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
+import type { TranslationKey } from '../i18n';
 import FilterIcon from '@mui/icons-material/FilterAlt';
 import FilterPanel from './filters/FilterPanel';
 import DatePicker from './datepicker/DatePicker';
@@ -66,6 +67,7 @@ export default function SearchPanel({
   
   const [collections, setCollections] = useState<STACCollection[]>([]);
   const [loading, setLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState<{ key: TranslationKey; status?: number } | null>(null);
   const [appliedFiltersCount, setAppliedFiltersCount] = useState<number>(0);
   const {
     authToken,
@@ -78,6 +80,7 @@ export default function SearchPanel({
     setAuthErrorMessage,
     filters,
     setFilters,
+    getValidAuthToken,
     t,
   } = useContext(AppContext)!;
   const [filterButtonEl, setFilterButtonEl] = useState<HTMLButtonElement | null>(null);
@@ -119,22 +122,25 @@ export default function SearchPanel({
       const silent = lastListKey.current === listKey;
       lastListKey.current = listKey;
       if (!silent) setLoading(true);
+      setCollectionsError(null);
       // Keep the existing array (and object identities) when nothing changed.
       const keepIfSame = (next: STACCollection[]) => (prev: STACCollection[]) =>
         JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       try {
+        const collectionAuthToken = authToken ? await getValidAuthToken() : null;
         if (fixedCollectionId) {
-          const collection = await getCollection(stacEndpoint, fixedCollectionId, authToken);
+          const collection = await getCollection(stacEndpoint, fixedCollectionId, collectionAuthToken);
           if (cancelled) return;
           setCollections(keepIfSame([collection]));
           if (!silent) setSelectedCollections([collection]);
         } else {
-          const collections = await getCollections(stacEndpoint, authToken);
+          const collections = await getCollections(stacEndpoint, collectionAuthToken);
           if (cancelled) return;
           setCollections(keepIfSame(collections));
         }
       } catch (error: unknown) {
-        if (axios.isAxiosError(error) && (error.response?.status === 403 || error.response?.status === 401)) {
+        if (cancelled) return;
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
           // This can happen after a page refresh when a stale auth token is still present
           // in localStorage. Clearing the auth session lets the user sign back in without
           // leaving the collections list permanently blank.
@@ -145,6 +151,12 @@ export default function SearchPanel({
           setRefreshExpiry(null);
           setAuthErrorMessage('errorCredentialsExpired');
           setIsAuthOpen(true);
+        } else {
+          const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+          setCollectionsError({
+            key: status === 429 ? 'collectionsRateLimited' : 'failedToLoadCollections',
+            status,
+          });
         }
       } finally {
         setLoading(false);
@@ -156,7 +168,7 @@ export default function SearchPanel({
   }, [
     stacEndpoint, authToken, listKey, fixedCollectionId, setSelectedCollections,
     setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry,
-    setAuthErrorMessage, setIsAuthOpen,
+    setAuthErrorMessage, setIsAuthOpen, getValidAuthToken,
   ]);
 
   /**
@@ -278,6 +290,10 @@ export default function SearchPanel({
           </span>
         </Tooltip>
       </Box>}
+
+      {collectionsError && <Alert severity="error" sx={{ mx: 2, mt: 1 }}>
+        {t(collectionsError.key)}{collectionsError.status ? ` (HTTP ${collectionsError.status})` : ''}
+      </Alert>}
 
       {fixedCollectionId && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2, pt: 1 }}>

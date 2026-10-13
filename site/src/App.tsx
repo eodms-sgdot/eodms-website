@@ -25,6 +25,12 @@ const REFRESH_TOKEN_ROTATION_MARGIN_MS = 10 * 60_000;
 function clearUnrefreshableSession() {
   const authToken = localStorage.getItem(fields.token);
   if (!authToken) return;
+  const username = localStorage.getItem(fields.username)?.trim();
+  if (!username) {
+    [fields.username, fields.token, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+      .forEach((key) => localStorage.removeItem(key));
+    return;
+  }
   const refreshToken = localStorage.getItem(fields.refreshToken);
   const refreshExpiry = localStorage.getItem(fields.refreshExpiry);
   if (refreshToken && refreshExpiry && !isRefreshTokenExpired(refreshExpiry)) return;
