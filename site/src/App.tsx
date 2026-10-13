@@ -12,6 +12,7 @@ import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { eodmsExperience, naplExperience } from './experiences';
 import axios from 'axios';
+import { isTemporalFilterField } from './utils/FilterBuilder';
 
 // Refresh this long before the access token expires so in-flight requests don't carry a stale token.
 const REFRESH_MARGIN_MS = 60_000;
@@ -114,7 +115,12 @@ export default function App() {
   const [baseMapLayer, setBaseMapLayer] = useState<BaseMap|undefined>(() => getBaseMap(baseMapId));
   const [filters, setFilters] = useState<Record<string, FilterValue[]>>(() => {
     try {
-      return JSON.parse(localStorage.getItem(fields.filters) as string) ?? {};
+      const storedFilters = JSON.parse(localStorage.getItem(fields.filters) as string) as Record<string, FilterValue[]> | null;
+      if (!storedFilters) return {};
+      Object.entries(storedFilters).forEach(([collectionName, collectionFilters]) => {
+        storedFilters[collectionName] = collectionFilters.filter(filter => !isTemporalFilterField(filter.fieldKey));
+      });
+      return storedFilters;
     } catch {
       return {};
     }

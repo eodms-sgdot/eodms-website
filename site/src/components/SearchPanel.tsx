@@ -9,6 +9,7 @@ import FilterPanel from './filters/FilterPanel';
 import DatePicker from './datepicker/DatePicker';
 import { getCollection, getCollections } from '../services/StacService';
 import { fields } from '../session';
+import { isTemporalFilterField } from '../utils/FilterBuilder';
 import Blind from './Blind';
 import SearchIcon from '@mui/icons-material/Search';
 import NaplWelcome from './NaplWelcome';
@@ -100,7 +101,7 @@ export default function SearchPanel({
         .filter(collectionName => !fixedCollectionId || collectionName === fixedCollectionId)
         .forEach((collectionName) => {
           filters[collectionName].forEach((filterValue) => {
-              if(filterValue.operation && filterValue.value) {
+              if(filterValue.operation && filterValue.value && !isTemporalFilterField(filterValue.fieldKey)) {
                 count = count + 1;
               }
           });  
@@ -290,7 +291,7 @@ export default function SearchPanel({
                 disabled={loading || selectedCollections.length !== 1}
                 sx={{ minWidth: 40 }}
               >
-                <Badge color="warning" badgeContent={appliedFiltersCount}>
+                <Badge color="warning" badgeContent={countFilters()}>
                   <FilterIcon />
                 </Badge>
               </Button>

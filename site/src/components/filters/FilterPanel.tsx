@@ -6,6 +6,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { FilterValue, STACCollection, STACQueryable} from "../../types";
 import FilterWidget from "./FilterWidget";
 import { getQueryables } from "../../services/StacService";
+import { isTemporalFilterField } from "../../utils/FilterBuilder";
 
 /**
  * The properties required to populate the filters panel.
@@ -187,7 +188,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                         queryables === undefined ? (
                                             <Typography sx={{fontSize: 'small'}}>t('noFilters')</Typography>
                                         ) : (
-                                            Object.entries(queryables).map(([qName, queryable]) => 
+                                            Object.entries(queryables).filter(([qName]) => !isTemporalFilterField(qName)).map(([qName, queryable]) => 
                                                 queryable ? 
                                                     <FilterWidget
                                                         key={`${collectionName}-queryable-${qName}`}

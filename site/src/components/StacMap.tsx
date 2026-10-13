@@ -47,12 +47,24 @@ interface StacMapProps {
   activeThumbnails?: Record<string, string>;
   /** Used to clear the current AOI */
   clearAoiTrigger?: number;
+  /** Previously selected AOI persisted across page loads */
+  initialBbox?: string | null;
   /** Callback for updating the bbox in local storage*/
   setBbox: (bbox: string | null) => void;
 }
 
 interface DrawCreatedEvent extends L.LeafletEvent {
   layer: L.Rectangle;
+}
+
+function parseBbox(bbox?: string | null): [number, number, number, number] | null {
+  const coordinates = bbox?.split(',').map(Number);
+  if (coordinates?.length !== 4 || !coordinates.every(Number.isFinite)) return null;
+
+  const [west, south, east, north] = coordinates;
+  return west >= -180 && west < east && east <= 180 && south >= -90 && south < north && north <= 90
+    ? [west, south, east, north]
+    : null;
 }
 
 /**
@@ -93,11 +105,12 @@ function MapZoomController({ bounds }: { bounds?: [number, number, number, numbe
  * @param {Function} props.onAoiDrawn - Callback to pass the generated BBOX up to the parent.
  * @param {Function} props.setBbox - Callback to clear the BBOX from local storage when it's removed.
  */
-function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, setBbox }: { 
+function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox }: { 
   onAoiDrawn: (bbox: [number, number, number, number]) => void;
   onOpenCoordinateEntry: () => void;
   coordinateEntryLabel: string;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
+  initialBbox?: string | null;
   setBbox: (bbox: string | null) => void;
 }) {
   const map = useMap();
@@ -105,6 +118,12 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
   useEffect(() => {
     const drawnItems = drawnItemsRef.current;
     map.addLayer(drawnItems);
+
+    const coordinates = parseBbox(initialBbox);
+    if (drawnItems.getLayers().length === 0 && coordinates) {
+      const [west, south, east, north] = coordinates;
+      drawnItems.addLayer(L.rectangle([[south, west], [north, east]]));
+    }
     
     const drawControl = new L.Control.Draw({
       edit: { featureGroup: drawnItems, remove: true },
@@ -167,7 +186,7 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
     };
-  }, [map, onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, setBbox]);
+  }, [map, onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox]);
   
   return null;
 }
@@ -383,7 +402,7 @@ const footprintStyles = (
   }} />
 );
 
-export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, setBbox }: StacMapProps) {
+export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox }: StacMapProps) {
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
@@ -394,6 +413,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
   const coordinateLabels = [t('longitude'), t('latitude')];
+  const initialBounds = parseBbox(initialBbox);
   const handleOpenCoordinateEntry = () => {
     setCoordinateValues(['', '']);
     setCoordinateError(false);
@@ -448,10 +468,11 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       )
       }
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
-      <DrawControl onAoiDrawn={onAoiDrawn} onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} setBbox={setBbox}/>
+      <DrawControl onAoiDrawn={onAoiDrawn} onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} initialBbox={initialBbox} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController bounds={zoomBounds} />
       <MapZoomController bounds={coordinateZoomBounds} />
+      <MapZoomController bounds={initialBounds} />
       <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} label={t('searchHere')} color={brandColor} />
 
       <Dialog open={coordinateDialogOpen} onClose={() => setCoordinateDialogOpen(false)}>

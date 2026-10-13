@@ -1,6 +1,11 @@
 import type { FilterDate, FilterValue} from "../types";
 import { createDateRange } from "./DateUtils";
 
+const TEMPORAL_FILTER_FIELDS = new Set(["datetime", "start_datetime", "end_datetime"]);
+
+export const isTemporalFilterField = (fieldKey: string): boolean =>
+    TEMPORAL_FILTER_FIELDS.has(fieldKey.toLowerCase());
+
 /**
  * Builds a CQL2 filter query parameter based on the supplied filters
  * @param filters The filters to be added to the 
@@ -10,11 +15,16 @@ export const buildFilter = (filters: FilterValue[]): string => {
     if(!filters || filters.length === 0) {
         return '';
     }
+
+    const applicableFilters = filters.filter(filterValue => !isTemporalFilterField(filterValue.fieldKey));
+    if (applicableFilters.length === 0) {
+        return '';
+    }
     
     const tokens:string[]  = []
     let first:boolean = true;
 
-    filters.forEach((filterValue) => {
+    applicableFilters.forEach((filterValue) => {
         const value = filterValue.value;
         const operation = filterValue.operation
         const type = filterValue.type;

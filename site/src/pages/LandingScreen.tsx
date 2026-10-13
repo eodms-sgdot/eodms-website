@@ -6,6 +6,7 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutlined';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
+import RouteIcon from '@mui/icons-material/Route';
 import { AppContext } from '../AppContext';
 import StacMap from '../components/StacMap';
 import SearchPanel from '../components/SearchPanel';
@@ -502,15 +503,40 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 0 }}>
             <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
           </Typography>
-          {showStagingBadge && (
-            <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
-              <Chip label="STAGING" size="small" color="warning" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
-            </Tooltip>
-          )}
-          {import.meta.env.DEV && (
-            <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
-              <Chip label="PROXY" size="small" color="info" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
-            </Tooltip>
+          {(showStagingBadge || import.meta.env.DEV) && (
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: { xs: 0.75, sm: 1.25 },
+              rowGap: 0.75,
+              ml: { xs: 1, sm: 2 },
+              minWidth: 0,
+              maxWidth: { xs: 150, sm: 'min(38vw, 420px)' },
+            }}>
+              {showStagingBadge && (
+                <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
+                  <Chip
+                    icon={<ScienceIcon fontSize="small" />}
+                    label="STAGING"
+                    size="small"
+                    color="warning"
+                    sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+                  />
+                </Tooltip>
+              )}
+              {import.meta.env.DEV && (
+                <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
+                  <Chip
+                    icon={<RouteIcon fontSize="small" />}
+                    label="PROXY"
+                    size="small"
+                    color="info"
+                    sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
           )}
 
           {/* empty to make widgets below align right */}
@@ -661,7 +687,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox, false); }} zoomBounds={zoomBounds} 
+            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox, false); }} zoomBounds={zoomBounds} 
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} setBbox={setBbox}
