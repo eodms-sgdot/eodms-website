@@ -20,6 +20,7 @@ interface ProcessingPanelProps {
   jobs: ProcessingJob[] | null;
   jobsError: string;
   onRefreshJobs: () => void;
+  onRefreshJob: (jobID: string) => Promise<void>;
   onClearHistory: () => void;
   candidate: STACItem | null;
   candidates: STACItem[];
@@ -55,7 +56,7 @@ function messageFor(cause: unknown): string {
     body?.error, body?.request_id && `request_id: ${body.request_id}`].filter(Boolean).join(' - ');
 }
 
-export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsError, onRefreshJobs, onClearHistory, candidate, candidates, onSelectCandidate }: ProcessingPanelProps) {
+export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsError, onRefreshJobs, onRefreshJob, onClearHistory, candidate, candidates, onSelectCandidate }: ProcessingPanelProps) {
   const { username, language, getValidAuthToken, t } = useContext(AppContext)!;
   const service = useMemo(() => new ProcessingService(import.meta.env.VITE_PROCESSING_URL || '/processing', getValidAuthToken), [getValidAuthToken]);
   const [processes, setProcesses] = useState<ProcessSummary[]>([]);
@@ -67,6 +68,7 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [jobResults, setJobResults] = useState<Record<string, JobResult>>({});
+  const [refreshingJobID, setRefreshingJobID] = useState<string | null>(null);
   const loadingResults = useRef(new Set<string>());
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
@@ -123,6 +125,12 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
       const results = await service.getResults(job.jobID);
       setJobResults(current => ({ ...current, [job.jobID]: results }));
     } catch (cause) { setError(messageFor(cause)); }
+  };
+
+  const refreshJob = async (jobID: string) => {
+    setRefreshingJobID(jobID);
+    try { await onRefreshJob(jobID); }
+    finally { setRefreshingJobID(null); }
   };
 
   const execute = async () => {
@@ -263,6 +271,12 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
                       {job.progress != null && job.status === 'running' ? ` (${job.progress}%)` : ''}
                     </Typography>
                   </Tooltip>}
+                {(job.status === 'accepted' || job.status === 'running') && <Tooltip title={t('processingRefresh')}>
+                  <span><IconButton size="small" aria-label={t('processingRefresh')} disabled={refreshingJobID === job.jobID}
+                    onClick={() => void refreshJob(job.jobID)}>
+                    {refreshingJobID === job.jobID ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+                  </IconButton></span>
+                </Tooltip>}
                 {job.status === 'successful' && httpAssets.length > 0 && <AssetDownloadButton assets={httpAssets} compact />}
               </Box>
             </TableCell>

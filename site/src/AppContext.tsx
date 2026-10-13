@@ -54,6 +54,7 @@ export interface AppContextType {
   isOrderingSupported: boolean;
   triggerNewOrder: (itemIds: string[], orderKeys: string[], collection: string) => Promise<OrderInfo | null>;
   expireOrder: (orderId: string) => Promise<null | undefined>;
+  refreshOrderStatus: (orderId: string) => Promise<void>;
   clearOrderHistory: () => void;
 }
 

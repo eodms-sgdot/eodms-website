@@ -209,7 +209,7 @@ export default function App() {
     };
   }, [authToken, authExpiry, refreshExpiry, getValidAuthToken]);
 
-  const { orders, isOrderingSupported, triggerNewOrder, expireOrder, clearOrderHistory } = useOrderPolling(
+  const { orders, isOrderingSupported, triggerNewOrder, expireOrder, refreshOrderStatus, clearOrderHistory } = useOrderPolling(
     (username ? username : ''),
     (authToken ? authToken : ''),
     stacEndpoint,
@@ -306,7 +306,7 @@ export default function App() {
       authErrorMessage, setAuthErrorMessage,
       language, setLanguage, 
       filters, setFilters, t,
-      orders, isOrderingSupported, triggerNewOrder, expireOrder, clearOrderHistory
+      orders, isOrderingSupported, triggerNewOrder, expireOrder, refreshOrderStatus, clearOrderHistory
     }}>
       <ThemeProvider theme={displayMode === "light" ? lightMode : darkMode}>
         <CssBaseline />

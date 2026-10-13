@@ -133,6 +133,52 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     });
   }, [userId, authToken, orderService]);
 
+  const refreshOrderStatus = useCallback(async (orderId: string) => {
+    if (!userId || !authToken || !orderService || !orderId) return;
+    const order = orders.find((current) => current.orderId === orderId);
+    if (!order || !isIncomplete(order)) return;
+
+    try {
+      const rawUpdate = await orderService.service.checkStatus(
+        order.orderId,
+        order.itemIds,
+        order.collection,
+        await getValidAuthToken()
+      );
+      if (currentUserId.current !== userId) return;
+
+      const update = orderService.transform(rawUpdate, order.itemIds, order.orderKeys, order.collection);
+      const refreshedOrder = scheduleNextCheck({
+        ...order,
+        status: update.status,
+        serverStatus: update.serverStatus,
+        code: update.code,
+        message: update.message,
+        error: update.error,
+        lastUpdate: update.lastUpdate,
+        retryAfterSeconds: update.retryAfterSeconds,
+        orderId: update.orderId || order.orderId,
+        downloadUrl: update.downloadUrl ?? order.downloadUrl,
+      }, order.attempts);
+
+      setOrders((previous) => {
+        const updated = previous.map((current) => current.orderId === orderId ? refreshedOrder : current);
+        localStorage.setItem(`orders_${userId}`, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error(`Error refreshing order state for ${orderId}:`, err);
+      if (currentUserId.current !== userId) return;
+      setOrders((previous) => {
+        const updated = previous.map((current) => current.orderId === orderId
+          ? scheduleNextCheck({ ...current, retryAfterSeconds: undefined }, current.attempts)
+          : current);
+        localStorage.setItem(`orders_${userId}`, JSON.stringify(updated));
+        return updated;
+      });
+    }
+  }, [userId, authToken, orders, orderService, getValidAuthToken]);
+
   const clearOrderHistory = useCallback(() => {
     if (!userId) return;
     setOrders((previous) => {
@@ -207,6 +253,7 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     isOrderingSupported,
     triggerNewOrder,
     expireOrder,
+    refreshOrderStatus,
     clearOrderHistory,
   };
 }

@@ -10,6 +10,7 @@ import {
   Link,
   Tooltip,
   IconButton,
+  CircularProgress,
 } from "@mui/material";
 import type { OrderInfo } from "../services/IOrderService"; // Adjust path to match your folder structure
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -19,9 +20,21 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { Fragment, useContext, useState } from "react";
 import { AppContext } from "../AppContext";
 import Blind from "./Blind";
+
+const LONG_WAIT_THRESHOLD_MS = 15 * 60 * 1000;
+
+const getNextCheckDelay = (nextCheckAt: string | undefined): number | null => {
+  if (!nextCheckAt) return null;
+  const milliseconds = Date.parse(nextCheckAt) - Date.now();
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return null;
+  return milliseconds;
+};
 
 interface OrderPanelProps {
   open: boolean;
@@ -33,10 +46,41 @@ export default function OrderPanel({
   onClose,
 }: OrderPanelProps) {
 
-  const { username, language, expireOrder, triggerNewOrder, clearOrderHistory, t } = useContext(AppContext)!;
+  const { username, language, orders, expireOrder, triggerNewOrder, refreshOrderStatus, clearOrderHistory, t } = useContext(AppContext)!;
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [refreshingOrderIds, setRefreshingOrderIds] = useState<Set<string>>(() => new Set());
+  const refreshableOrders = orders.filter(order => order.status === "Processing" || order.status === "Pending");
+
+  const handleStatusRefresh = async (orderId: string) => {
+    setRefreshingOrderIds(previous => new Set(previous).add(orderId));
+    try {
+      await refreshOrderStatus(orderId);
+    } finally {
+      setRefreshingOrderIds(previous => {
+        const updated = new Set(previous);
+        updated.delete(orderId);
+        return updated;
+      });
+    }
+  };
+
+  const handleRefreshAllOrders = async () => {
+    const orderIds = refreshableOrders.map(order => order.orderId);
+    setRefreshingOrderIds(previous => new Set([...previous, ...orderIds]));
+    try {
+      for (const order of refreshableOrders) {
+        await refreshOrderStatus(order.orderId);
+      }
+    } finally {
+      setRefreshingOrderIds(previous => {
+        const updated = new Set(previous);
+        orderIds.forEach(orderId => updated.delete(orderId));
+        return updated;
+      });
+    }
+  };
 
   const handleRetry = async (order: OrderInfo) => {
     const key = order.collection + order.itemIds.join();
@@ -145,6 +189,38 @@ export default function OrderPanel({
   }: {
     order: OrderInfo;
   }) {
+    const nextCheckDelay = getNextCheckDelay(order.nextCheckAt);
+    const isRestoring = order.serverStatus === "ItemsRestoring";
+    const isLongWait = nextCheckDelay !== null && nextCheckDelay >= LONG_WAIT_THRESHOLD_MS;
+
+    if ((isRestoring || isLongWait) && order.status !== "Available" && order.status !== "Failed") {
+      return (
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0.5 }}>
+            <Typography
+              component="span"
+              variant="caption"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.5,
+                fontWeight: "bold",
+                px: 1,
+                py: 0.5,
+                borderRadius: "4px",
+                bgcolor: isRestoring ? "#d9edff" : "#fff0cc",
+                color: isRestoring ? "#073b5c" : "#573b00",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {isRestoring ? <CloudDownloadIcon sx={{ fontSize: 14 }} /> : <ScheduleIcon sx={{ fontSize: 14 }} />}
+              {isRestoring ? t("statusRestoring") : t("statusWaitingLong")}
+            </Typography>
+            <RefreshOrderButton order={order} />
+            <CancelOrderButton order={order} />
+        </Box>
+      );
+    }
+
     switch (order.status) {
       case "Available":
         return order.downloadUrl ? (
@@ -258,6 +334,7 @@ export default function OrderPanel({
           >
             {t("statusProcessing")}
           </Typography>
+          <RefreshOrderButton order={order} />
           <CancelOrderButton order={order} />
           </Box>
         );
@@ -279,6 +356,7 @@ export default function OrderPanel({
           >
             {t("statusPending")}
           </Typography>
+          <RefreshOrderButton order={order} />
           <CancelOrderButton order={order} />
           </Box>
         );
@@ -291,6 +369,24 @@ export default function OrderPanel({
         <IconButton size="small" aria-label={t("cancelPreparing")} onClick={() => expireOrder(order.orderId)}>
           <CloseIcon fontSize="small" />
         </IconButton>
+      </Tooltip>
+    );
+  }
+
+  function RefreshOrderButton({ order }: { order: OrderInfo }) {
+    const isRefreshing = refreshingOrderIds.has(order.orderId);
+    return (
+      <Tooltip title={t("refreshStatus")}>
+        <span>
+          <IconButton
+            size="small"
+            aria-label={t("refreshStatus")}
+            disabled={isRefreshing}
+            onClick={() => void handleStatusRefresh(order.orderId)}
+          >
+            {isRefreshing ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+          </IconButton>
+        </span>
       </Tooltip>
     );
   }
@@ -336,12 +432,25 @@ export default function OrderPanel({
       <Box sx={{ px: 1, pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6" color="primary" gutterBottom>{t('orderHistory')}</Typography>
-          <Tooltip title={t('clearCompletedHistory')}>
-            <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
-              disabled={!localOrders.some(order => order.status === 'Available' || order.status === 'Failed')}
-              color={localOrders.some(order => order.status === 'Available' || order.status === 'Failed') ? 'error' : 'default'}
-              onClick={clearOrderHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
-          </Tooltip>
+          <Box
+            role="group"
+            aria-label={`${t('refreshAllOrders')}, ${t('clearCompletedHistory')}`}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.25, p: '2px', border: 1, borderColor: 'divider', borderRadius: 1 }}
+          >
+            <Tooltip title={refreshableOrders.length ? t('refreshAllOrders') : t('noActiveOrdersToRefresh')}>
+              <span><IconButton size="small" aria-label={t('refreshAllOrders')}
+                disabled={refreshingOrderIds.size > 0 || refreshableOrders.length === 0}
+                onClick={() => void handleRefreshAllOrders()}>
+                {refreshingOrderIds.size > 0 ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+              </IconButton></span>
+            </Tooltip>
+            <Tooltip title={t('clearCompletedHistory')}>
+              <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
+                disabled={!localOrders.some(order => order.status === 'Available' || order.status === 'Failed')}
+                color={localOrders.some(order => order.status === 'Available' || order.status === 'Failed') ? 'error' : 'default'}
+                onClick={clearOrderHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
+            </Tooltip>
+          </Box>
         </Box>
         {localOrders.length === 0 ? (
           <Typography

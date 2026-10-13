@@ -42,6 +42,26 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
     }
   }, [username, service]);
 
+  const refreshJob = useCallback(async (jobID: string) => {
+    if (!username || !jobID) return;
+    try {
+      const refreshed = await service.getJob(jobID);
+      setState(previous => {
+        if (previous.username !== username || !previous.jobs) return previous;
+        const existing = previous.jobs.find(job => job.jobID === jobID);
+        if (!existing) return previous;
+        const next = statusRank(existing) > statusRank(refreshed) ? existing : refreshed;
+        return {
+          username,
+          jobs: previous.jobs.map(job => job.jobID === jobID ? next : job),
+        };
+      });
+      setError('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [username, service]);
+
   useEffect(() => {
     if (!username || jobs !== null) return;
     const initial = window.setTimeout(() => { void refreshJobs(); }, 0);
@@ -101,5 +121,5 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
     return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [username, jobs, service]);
 
-  return { jobs, error, refreshJobs, registerJob, clearProcessingHistory };
+  return { jobs, error, refreshJobs, refreshJob, registerJob, clearProcessingHistory };
 }

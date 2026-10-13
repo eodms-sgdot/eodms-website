@@ -73,7 +73,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
   const [processingReceipt, setProcessingReceipt] = useState<{ username: string; submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null>(null);
   const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
-  const { jobs: processingJobs, error: processingJobsError, refreshJobs, registerJob, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
+  const { jobs: processingJobs, error: processingJobsError, refreshJobs, refreshJob, registerJob, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
   const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
     experience.fixedCollectionId
@@ -634,7 +634,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             void refreshJobs();
             setSelectedFootprints(new Set());
             setProcessingCandidateId(null);
-          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={() => { void refreshJobs(); }} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
+          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={() => { void refreshJobs(); }} onRefreshJob={refreshJob} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
         </Toolbar>
         <SkyBar />
       </AppBar>
