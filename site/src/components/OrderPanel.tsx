@@ -20,6 +20,7 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import DeleteIcon from "@mui/icons-material/Delete";
 import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -46,7 +47,7 @@ export default function OrderPanel({
   onClose,
 }: OrderPanelProps) {
 
-  const { username, language, orders, expireOrder, triggerNewOrder, refreshOrderStatus, clearOrderHistory, t } = useContext(AppContext)!;
+  const { language, orders, expireOrder, triggerNewOrder, refreshOrderStatus, clearOrderHistory, t } = useContext(AppContext)!;
   const [copiedOrderKey, setCopiedOrderKey] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
@@ -119,21 +120,6 @@ export default function OrderPanel({
     if (success) {
       setCopiedOrderKey(key);
       setTimeout(() => setCopiedOrderKey(null), 2000); // Reset icon back after 2 seconds
-    }
-  };
-
-  /**
-   * Get the latest orders hostory from the local storage.
-   * @returns the latest orders hostory from the local storage.
-   */
-  const getLocalOrders = (): OrderInfo[] => {
-    if (!username) return [];
-    try {
-      const raw = localStorage.getItem(`orders_${username}`);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      console.error("Failed to parse local orders:", e);
-      return [];
     }
   };
 
@@ -391,7 +377,7 @@ export default function OrderPanel({
     );
   }
 
-  const localOrders = getLocalOrders();
+  const localOrders = orders;
 
   const formatDate = (iso: string) => new Date(iso).toLocaleString(language, {
     timeZone: 'UTC',
@@ -448,7 +434,7 @@ export default function OrderPanel({
               <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
                 disabled={!localOrders.some(order => order.status === 'Available' || order.status === 'Failed')}
                 color={localOrders.some(order => order.status === 'Available' || order.status === 'Failed') ? 'error' : 'default'}
-                onClick={clearOrderHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
+                onClick={() => clearOrderHistory()}><DeleteSweepIcon fontSize="small" /></IconButton></span>
             </Tooltip>
           </Box>
         </Box>
@@ -587,11 +573,20 @@ export default function OrderPanel({
                     <Box
                       sx={{
                         display: "flex",
+                        alignItems: "center",
                         justifyContent: "flex-end",
                         width: "100%",
                       }}
                     >
                       <OrderStatusAction order={order} />
+                      {(order.status === 'Available' || order.status === 'Failed') && (
+                        <Tooltip title={t('removeFromHistory')}>
+                          <IconButton size="small" color="error" aria-label={`${t('removeFromHistory')} - ${order.orderId}`}
+                            onClick={() => clearOrderHistory(order)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Box>
                   </TableCell>
                 </TableRow>

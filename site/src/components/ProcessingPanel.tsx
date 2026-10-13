@@ -5,6 +5,7 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
 import Blind from './Blind';
 import AssetDownloadButton, { S3CopyButton } from './AssetDownloadButton';
@@ -21,7 +22,7 @@ interface ProcessingPanelProps {
   jobsError: string;
   onRefreshJobs: () => void;
   onRefreshJob: (jobID: string) => Promise<void>;
-  onClearHistory: () => void;
+  onClearHistory: (jobID?: string) => void;
   candidate: STACItem | null;
   candidates: STACItem[];
   onSelectCandidate: (id: string) => void;
@@ -211,7 +212,7 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
               <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
                 disabled={!jobs?.some(job => job.status !== 'accepted' && job.status !== 'running')}
                 color={jobs?.some(job => job.status !== 'accepted' && job.status !== 'running') ? 'error' : 'default'}
-                onClick={onClearHistory}><DeleteSweepIcon fontSize="small" /></IconButton></span>
+                onClick={() => onClearHistory()}><DeleteSweepIcon fontSize="small" /></IconButton></span>
             </Tooltip>
             <Tooltip title={t('processingRefresh')}>
               <IconButton size="small" aria-label={t('processingRefresh')} onClick={onRefreshJobs}>
@@ -278,6 +279,12 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
                   </IconButton></span>
                 </Tooltip>}
                 {job.status === 'successful' && httpAssets.length > 0 && <AssetDownloadButton assets={httpAssets} compact />}
+                {job.status !== 'accepted' && job.status !== 'running' && <Tooltip title={t('removeFromHistory')}>
+                  <IconButton size="small" color="error" aria-label={`${t('removeFromHistory')} - ${job.jobID}`}
+                    onClick={() => onClearHistory(job.jobID)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>}
               </Box>
             </TableCell>
           </TableRow>;

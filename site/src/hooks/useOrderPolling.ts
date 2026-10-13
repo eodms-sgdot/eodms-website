@@ -179,10 +179,10 @@ export function useOrderPolling(userId: string, authToken: string, stacUrl: stri
     }
   }, [userId, authToken, orders, orderService, getValidAuthToken]);
 
-  const clearOrderHistory = useCallback(() => {
+  const clearOrderHistory = useCallback((order?: OrderInfo) => {
     if (!userId) return;
     setOrders((previous) => {
-      const remaining = previous.filter(isIncomplete);
+      const remaining = previous.filter(current => order ? current !== order : isIncomplete(current));
       localStorage.setItem(`orders_${userId}`, JSON.stringify(remaining));
       return remaining;
     });

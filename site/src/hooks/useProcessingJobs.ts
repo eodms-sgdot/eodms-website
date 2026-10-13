@@ -77,14 +77,15 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
     }));
   }, [username]);
 
-  const clearProcessingHistory = useCallback(() => {
+  const clearProcessingHistory = useCallback((jobID?: string) => {
     if (!username) return;
     setState(previous => {
       if (previous.username !== username || !previous.jobs) return previous;
       const hidden = hiddenJobs(username);
-      previous.jobs.filter(job => !isPending(job)).forEach(job => hidden.add(job.jobID));
+      previous.jobs.filter(job => !isPending(job) && (jobID === undefined || job.jobID === jobID))
+        .forEach(job => hidden.add(job.jobID));
       localStorage.setItem(hiddenKey(username), JSON.stringify([...hidden]));
-      return { username, jobs: previous.jobs.filter(isPending) };
+      return { username, jobs: previous.jobs.filter(job => !hidden.has(job.jobID)) };
     });
   }, [username]);
 

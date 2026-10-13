@@ -33,9 +33,12 @@ import { getItemsExtent } from '../utils/GeometryUtils';
 import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
 import { OrbitLoader, SkyBar, TitleCharm } from '../components/OrbitCharm';
+import AuroraLoader from '../components/AuroraLoader';
+import RiverLoader from '../components/RiverLoader';
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 
+const SEARCH_LOADERS = [OrbitLoader, AuroraLoader, RiverLoader];
 const DRAWER_WIDTH = 320;
 // Matches useIsMobile's default so the first render agrees with it.
 const MOBILE_BREAKPOINT = 768;
@@ -83,6 +86,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [zoomBounds, setZoomBounds] = useState<[number, number, number, number] | null>(null);
 
   const [isSearching, setIsSearching] = useState(false);
+  const [searchAnimation, setSearchAnimation] = useState(0);
+  const SearchLoader = SEARCH_LOADERS[searchAnimation % SEARCH_LOADERS.length];
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [selectedFootprints, setSelectedFootprints] = useState<Set<string>>(() => new Set());
@@ -399,6 +404,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
 
     setIsSearching(true);
+    setSearchAnimation(previous => previous + 1);
     showRightPanel(true);
 
     try {
@@ -639,7 +645,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={<OrbitLoader />} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} indicator={isSearching ? <SearchLoader /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 

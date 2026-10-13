@@ -55,7 +55,7 @@ export interface AppContextType {
   triggerNewOrder: (itemIds: string[], orderKeys: string[], collection: string) => Promise<OrderInfo | null>;
   expireOrder: (orderId: string) => Promise<null | undefined>;
   refreshOrderStatus: (orderId: string) => Promise<void>;
-  clearOrderHistory: () => void;
+  clearOrderHistory: (order?: OrderInfo) => void;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
