@@ -107,8 +107,11 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem(fields.language) as Language) ?? 'en');
-  const [baseMapId, setBaseMapId] = useState<BaseMapId>(() => (localStorage.getItem(fields.baseMap) as BaseMapId) ?? 'osm');
-  const [baseMapLayer, setBaseMapLayer] = useState<BaseMap|undefined>(() => (getBaseMap(localStorage.getItem(fields.baseMap) as BaseMapId)));
+  const [baseMapId, setBaseMapId] = useState<BaseMapId>(() => {
+    const savedBaseMapId = localStorage.getItem(fields.baseMap) as BaseMapId;
+    return getBaseMap(savedBaseMapId)?.name ?? 'osm';
+  });
+  const [baseMapLayer, setBaseMapLayer] = useState<BaseMap|undefined>(() => getBaseMap(baseMapId));
   const [filters, setFilters] = useState<Record<string, FilterValue[]>>(() => {
     try {
       return JSON.parse(localStorage.getItem(fields.filters) as string) ?? {};

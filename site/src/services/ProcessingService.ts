@@ -79,7 +79,7 @@ export function getS3RecursiveCommand(uris: string[]): string | null {
     }
     if (!shared.length) return null;
     const prefix = `s3://${bucket}/${shared.join('/')}/`;
-    return `aws s3 cp '${prefix.replaceAll("'", "''")}' . --recursive --no-sign-request`;
+    return `aws s3 cp ${prefix} . --recursive --no-sign-request`;
   } catch { return null; }
 }
 
