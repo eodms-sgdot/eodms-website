@@ -98,30 +98,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
      * @param updatedFilterValue 
      */
     const updateFilters = (collectionName: string, updatedFilterValue: FilterValue) => {
-        let collectionFilters: FilterValue[] = filters[collectionName];
-        
-        if(!collectionFilters) {
-            collectionFilters = [];
-        }
-
-        const existingFilter = collectionFilters.find((field) => field.id === updatedFilterValue.id)
-
-        if(existingFilter) {
-            existingFilter.operation = updatedFilterValue.operation;
-            existingFilter.value = updatedFilterValue.value;
-            existingFilter.type = updatedFilterValue.type;
-        }
-        else {
-            collectionFilters.push(updatedFilterValue);
-        }
+        const collectionFilters = filters[collectionName] ?? [];
+        const updatedCollectionFilters = collectionFilters.some((field) => field.id === updatedFilterValue.id)
+            ? collectionFilters.map((field) => field.id === updatedFilterValue.id ? updatedFilterValue : field)
+            : [...collectionFilters, updatedFilterValue];
 
         const updatedFilters = {
           ...filters,
-          [collectionName]: collectionFilters  
+          [collectionName]: updatedCollectionFilters
         };
 
         setFilters(updatedFilters);
-        countFilters();
     };
 
     /**

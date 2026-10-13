@@ -55,7 +55,12 @@ const StringFilter: React.FC<StringFilterProps> = ({
   const [localValue, setLocalValue] = useState<string>((filterData.value as string) ?? '');
   const [valid, setValid] = useState<boolean>(true);
   const [localOperation, setLocalOperation] = useState<string>(filterData.operation && filterData.operation != '' ? filterData.operation : '=');
-  filterData.operation = localOperation;
+
+  const isValueValid = (value: string, operation: string) => {
+    if (!queryable.pattern || value === '') return true;
+    const validationValue = operation === 'LIKE' ? value.replace(/[%_]/g, '') : value;
+    return validationValue === '' || new RegExp('^'+queryable.pattern+'$', 'i').test(validationValue);
+  };
 
    /**
    * Handler to handle what happens when a filter value is entered.
@@ -65,14 +70,11 @@ const StringFilter: React.FC<StringFilterProps> = ({
     const newValue = event.target.value;
     setLocalValue(newValue);
 
-    // ^ and $ are needed to make sure the entire value matches pattern the and not just a substring matches
-    setValid(!queryable.pattern || newValue === '' || new RegExp('^'+queryable.pattern+'$', 'i').test(newValue));
-  };
-
-  const commitValue = () => {
-    if (!valid) return;
-    const newFilter: FilterValue = {...filterData, type: 'string', value: localValue};
-    updateFilterHandler(collectionName, newFilter);
+    const isValid = isValueValid(newValue, localOperation);
+    setValid(isValid);
+    if (isValid) {
+      updateFilterHandler(collectionName, {...filterData, type: 'string', operation: localOperation, value: newValue});
+    }
   };
 
   /**
@@ -83,8 +85,11 @@ const StringFilter: React.FC<StringFilterProps> = ({
     const newOperation = event.target.value;
     setLocalOperation(newOperation);
 
-    const newFilter: FilterValue = {...filterData, type: 'string', operation: newOperation};
-    updateFilterHandler(collectionName, newFilter);
+    const isValid = isValueValid(localValue, newOperation);
+    setValid(isValid);
+    if (isValid) {
+      updateFilterHandler(collectionName, {...filterData, type: 'string', operation: newOperation, value: localValue});
+    }
   };
 
   /**
@@ -95,7 +100,7 @@ const StringFilter: React.FC<StringFilterProps> = ({
     const newValue = event.target.value;
     setLocalValue(newValue);
 
-    const newFilter: FilterValue = {...filterData, type: 'string', value: newValue};
+    const newFilter: FilterValue = {...filterData, type: 'string', operation: localOperation, value: newValue};
     updateFilterHandler(collectionName, newFilter);
   };
 
@@ -149,8 +154,6 @@ const StringFilter: React.FC<StringFilterProps> = ({
         variant="outlined"
         value={localValue}
         onChange={handleFilterValueChange}
-        onBlur={commitValue}
-        onKeyDown={(e) => { if (e.key === 'Enter') commitValue(); }}
         placeholder={t('stringPlaceholder')}
         color={valid ? 'primary' : 'warning'}
         sx={{ width: '50vw', maxWidth: 374}}

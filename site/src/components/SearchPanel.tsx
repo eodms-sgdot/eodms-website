@@ -68,7 +68,6 @@ export default function SearchPanel({
   const [collections, setCollections] = useState<STACCollection[]>([]);
   const [loading, setLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<{ key: TranslationKey; status?: number } | null>(null);
-  const [appliedFiltersCount, setAppliedFiltersCount] = useState<number>(0);
   const {
     authToken,
     setUsername,
@@ -108,7 +107,6 @@ export default function SearchPanel({
       });
     };
 
-    setAppliedFiltersCount(count);
     return count;
   }, [filters, fixedCollectionId]);
 
@@ -170,18 +168,6 @@ export default function SearchPanel({
     setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry,
     setAuthErrorMessage, setIsAuthOpen, getValidAuthToken,
   ]);
-
-  /**
-   * Recounts the number of applied filters whenever
-   * the filters are changed or the filters panel opens/closes
-   */
-  useEffect(() => {
-    const getAppliedCount = () => {
-        countFilters();
-      };
-
-    getAppliedCount();
-  }, [countFilters, filters, filterButtonEl]);
 
   /**
    * Set selected collections to match filters saved in session
@@ -283,7 +269,7 @@ export default function SearchPanel({
               sx={{ minWidth: "40px", p: 0, alignSelf: 'center' }}
               disabled={selectedCollections.length !== 1}
             >
-              <Badge color="warning" badgeContent={appliedFiltersCount}>
+              <Badge color="warning" badgeContent={countFilters()}>
                 {<FilterIcon sx={{color: (selectedCollections.length === 1 ? "white" : "grey")}}/>}
               </Badge>
             </Button>

@@ -40,7 +40,6 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
       "import.meta.env.VITE_BUILD_ID": JSON.stringify(buildId),
-      "import.meta.env.VITE_EODMS_SHOW_PROXY_BADGE": JSON.stringify(env.EODMS_SHOW_PROXY_BADGE?.toLowerCase() === "true"),
       "import.meta.env.VITE_EODMS_ENDPOINTS": JSON.stringify(endpointMap),
     },
     server: {

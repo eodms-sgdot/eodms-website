@@ -507,7 +507,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               <Chip label="STAGING" size="small" color="warning" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
             </Tooltip>
           )}
-          {import.meta.env.VITE_EODMS_SHOW_PROXY_BADGE && (
+          {import.meta.env.DEV && (
             <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
               <Chip label="PROXY" size="small" color="info" sx={{ height: 22, fontWeight: 700, flexShrink: 0 }} />
             </Tooltip>

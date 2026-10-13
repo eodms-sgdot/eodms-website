@@ -48,8 +48,8 @@ Git; update `.env.example` when adding configuration variables. Staging builds
 and deployments use the relative `/napl/v1` URL directly and do not need the
 local proxy or domain variables.
 
-Set `EODMS_SHOW_PROXY_BADGE=true` in `.env.local` to show the optional `PROXY`
-badge in the app bar; the source-controlled template defaults it to `false`.
+The app automatically shows the `PROXY` badge when running through the local
+Vite development server. No environment setting is needed.
 
 ## Production Build
 
