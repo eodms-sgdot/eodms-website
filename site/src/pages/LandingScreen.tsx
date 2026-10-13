@@ -557,7 +557,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             </Tooltip>
 
             {username && (
-              <Tooltip title={t('viewActiveProcessing')}>
+              <Tooltip title={t('viewOrderHistory')}>
                 <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)}>
                   <Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}>
                     <ShoppingBagIcon fontSize="small" />
