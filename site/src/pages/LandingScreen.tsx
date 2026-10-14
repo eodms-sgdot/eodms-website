@@ -74,6 +74,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches);
   const [rightOpen, setRightOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
+  const [loadedResults, setLoadedResults] = useState<STACItem[]>([]);
   const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
   const [processingReceipt, setProcessingReceipt] = useState<{ username: string; submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null>(null);
   const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
@@ -208,6 +209,11 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
   const handleSearchResult = (result: StacSearchResult, zoomToResults = true) => {
     setSearchResults(result.items);
+    setLoadedResults(previous => {
+      const items = new Map(previous.map(item => [JSON.stringify([item.collection, item.id]), item]));
+      result.items.forEach(item => items.set(JSON.stringify([item.collection, item.id]), item));
+      return [...items.values()];
+    });
     setSelectedFootprints(new Set());
     setFocusedItem(null);
     const throughThisPage = (result.currentPage - 1) * pageSize + result.items.length;
@@ -300,6 +306,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    */
   const handleOnResultsClear = () => {
     setSearchResults([]);
+    setLoadedResults([]);
     setProcessingCandidateId(null);
     setSelectedFootprints(new Set());
     setActiveThumbnails({});
@@ -363,6 +370,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
 
     setSearchError(null);
+    setLoadedResults([]);
     setSelectedFootprints(new Set());
     setActiveThumbnails({});
     setFocusedItem(null);
@@ -489,7 +497,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             href={`https://www.canada.ca/${language}.html`}
             target="_blank"
             rel="noopener noreferrer"
-            sx={{ display: 'flex', alignItems: 'center', ml: 1, mr: 1.5, flexShrink: 0 }}
+            sx={{ display: 'flex', alignItems: 'center', ml: 1, mr: 1.5, flexShrink: 0,
+              width: isMobile ? Math.round(22 * 155.4 / 75.97) : 'auto', overflow: 'hidden' }}
           >
             <Box
               component="img"
@@ -497,10 +506,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               alt={t('governmentOfCanada')}
               sx={{
                 height: 22,
-                // On narrow screens show only the flag symbol (the left 155 of 819 viewBox units).
-                width: isMobile ? Math.round(22 * 155.4 / 75.97) : Math.round(22 * 819 / 75.97),
-                objectFit: 'cover',
-                objectPosition: 'left',
+                width: 'auto',
+                display: 'block',
+                flexShrink: 0,
+                objectFit: 'contain',
                 // Official all-white monochrome form on dark backgrounds.
                 filter: displayMode === 'dark' ? 'brightness(0) invert(1)' : 'none',
               }}
@@ -563,7 +572,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               </IconButton>
             </Tooltip>
 
-            {username && (
+            {username && experience.id === 'eodms' && (
               <Tooltip title={t('viewOrderHistory')}>
                 <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)}>
                   <Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}>
@@ -596,7 +605,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
             <Tooltip title={t('toggleResults')}>
               <IconButton onClick={() => showRightPanel(!rightOpen)} sx={barButtonSx(rightOpen)}>
-                <Badge badgeContent={discovered.count > 0 ? `${discovered.count}${discovered.hasMore ? '…' : ''}` : 0} color="secondary"><ViewSidebarIcon fontSize="small" /></Badge>
+                <Badge badgeContent={loadedResults.length > 0 ? `${loadedResults.length}${discovered.hasMore ? '…' : ''}` : 0} color="secondary"><ViewSidebarIcon fontSize="small" /></Badge>
               </IconButton>
             </Tooltip>
           </Box>
@@ -629,11 +638,11 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               return !authToken ? <AuthPanel footerStart={termsLink} /> : <LogoutPanel footerStart={termsLink} />;
             })()}
           </Blind>
-          <OrderPanel 
+          {experience.id === 'eodms' && <OrderPanel
             key={username ?? 'guest'}
             open={isOrdersOpen}
             onClose={() => setOpenBlind(null)}
-          />
+          />}
           {experience.id === 'eodms' && <ProcessingPanel key={`${username ?? 'guest'}:${processingCandidate?.id ?? 'none'}`} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId) => {
             setProcessingReceipt(username ? { username, submission, job, processId, itemId } : null);
             setSubmissionToastOpen(true);
@@ -713,7 +722,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           </Box>
           <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <ResultsPanel 
-              results={searchResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} 
+              results={searchResults} loadedResults={loadedResults} onClose={() => setRightOpen(false)} onZoom={handleZoom}
               onProcessCart={() => { setOpenBlind('processing'); setIsAuthOpen(false); }}
               isSearching={isSearching} selectedFootprints={selectedFootprints}
               onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
@@ -740,7 +749,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           {t('processingSubmitted')} (HTTP {processingReceipt?.submission.status})
         </Alert>
       </Snackbar>
-      <OrderReadyNotifier />
+      {experience.id === 'eodms' && <OrderReadyNotifier />}
       <TermsOfUseDialog
         key={username ?? 'anonymous'}
         username={username}

@@ -82,7 +82,7 @@ export default function App() {
     ? '/aaa/v1/refresh'
     : import.meta.env.VITE_DEFAULT_REFRESH_URL || '/aaa/v1/refresh';
 
-  const [searchLimit, setSearchLimit] = useState<number>(() => localStorage.getItem(fields.searchLimit) ? Number(localStorage.getItem(fields.searchLimit)) : 50);
+  const [searchLimit, setSearchLimit] = useState<number>(100);
 
   const [searchTemporal, setSearchTemporal] = useState<string>(() => localStorage.getItem(fields.searchTemporal) ?? 'anytime');
   const [searchStartDate, setSearchStartDate] = useState<string>(() => localStorage.getItem(fields.searchStartDate) ?? '');

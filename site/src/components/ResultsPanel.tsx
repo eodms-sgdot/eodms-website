@@ -21,6 +21,7 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Pagination,
   Menu,
   MenuItem,
   ListItemText,
@@ -181,6 +182,7 @@ const formatElapsed = (ms: number) => {
 interface ResultsPanelProps {
   /** Array of STAC features to display as cards */
   results: STACItem[];
+  loadedResults: STACItem[];
   /** Callback fired to close the results drawer */
   onClose: () => void;
   /** Callback fired to zoom the map to a specific item's bounds */
@@ -243,6 +245,7 @@ interface ResultsPanelProps {
  */
 export default function ResultsPanel({
   results,
+  loadedResults,
   onClose,
   onZoom,
   onProcessCart,
@@ -275,10 +278,12 @@ export default function ResultsPanel({
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "number", dir: "asc" });
   const [columnPrefs, setColumnPrefs] = useState<string[] | null>(loadColumnPrefs);
   const [columnMenuEl, setColumnMenuEl] = useState<HTMLElement | null>(null);
+  const [exportError, setExportError] = useState(false);
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
   const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint, authToken, getValidAuthToken } = useContext(AppContext)!;
+
   
   // Tracks multiple item IDs currently ordered. 
   const [itemsLoading, setItemsLoading] = useState<Record<string, boolean>>({});
@@ -614,6 +619,35 @@ export default function ResultsPanel({
 
     return rawUrl;
   }
+
+  const metadataThumbUrl = activeMetadata ? buildThumbUrl(activeMetadata) : undefined;
+
+  const handleExportResults = () => {
+    if (isSearching || loadedResults.length === 0) return;
+    setExportError(false);
+    try {
+      const collections = [...new Set(loadedResults.map(item => item.collection))];
+      const collection = (collections.length === 1 ? collections[0] : "multiple-collections")
+        .replace(/[<>:"/\\|?*]/g, "_");
+      const now = new Date();
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const content = JSON.stringify({ type: "FeatureCollection", features: loadedResults }, null, 2);
+      const url = URL.createObjectURL(new Blob([content], { type: "application/geo+json;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `eodms-${collection}-${loadedResults.length}-${timestamp}.json`;
+      document.body.appendChild(link);
+      try {
+        link.click();
+      } finally {
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+    } catch {
+      setExportError(true);
+    }
+  };
 
   const copyItemSource = async (item: STACItem) => {
     const json = JSON.stringify(item, null, 2);
@@ -1139,6 +1173,7 @@ export default function ResultsPanel({
             const isFocused = item.id === focusedItem;
             const thumbUrl = buildThumbUrl(item);
             const orderKey:string|null = item.properties?.order_key ? String(item.properties?.order_key) : null;
+            const datetime = formatCell(DATE_KEY, item.properties?.[DATE_KEY]);
 
             return (
               <Card
@@ -1149,7 +1184,7 @@ export default function ResultsPanel({
                 onMouseEnter={() => onHoverItem(item.id)}
                 onMouseLeave={() => onHoverItem(null)}
                 sx={{
-                  mb: 2,
+                  mb: 1,
                   cursor: "pointer",
                   "&:focus-visible": { outline: `2px solid ${brandColor}`, outlineOffset: -2 },
                   position: "relative",
@@ -1185,6 +1220,19 @@ export default function ResultsPanel({
                 >
                   {numberOffset + index + 1}
                 </Box>
+                <Checkbox
+                  size="small"
+                  checked={isSelected}
+                  onChange={() => handleCartToggle(item)}
+                  slotProps={{ input: { "aria-label": `${t("cart")} - ${item.collection} - ${orderKey ?? item.id}` } }}
+                  sx={{
+                    position: "absolute", top: 6, right: 6, zIndex: 2,
+                    width: 32, height: 32, p: 0.5, borderRadius: 1,
+                    bgcolor: alpha(theme.palette.background.paper, 0.94),
+                    "&:hover": { bgcolor: "background.paper" },
+                    "&.Mui-checked": { color: highlightColor },
+                  }}
+                />
                 <Tooltip title={isThumbnailActive ? t("hideMapHover") : t("showMapHover")}>
                   <CardActionArea
                     disabled={!thumbUrl}
@@ -1208,56 +1256,50 @@ export default function ResultsPanel({
                 </Tooltip>
                 <CardContent
                   sx={{
-                    p: 0,
-                    pl: 1,
-                    pr: 1.5,
-                    pt: 1.25,
+                    p: 1,
+                    "&:last-child": { pb: 1 },
                     display: "flex",
-                    alignItems: "flex-start",
-                    gap: 0.5,
+                    alignItems: "center",
+                    gap: 1,
                   }}
                 >
-                  <Checkbox
-                    size="small"
-                    checked={isSelected}
-                    onChange={() => handleCartToggle(item)}
-                    sx={{ p: 0.5, "&.Mui-checked": { color: highlightColor } }}
-                  />
-
-                  <Tooltip title={t("metadataHover")}>
-                    <Link
-                      component="button"
-                      variant="body2"
-                      onClick={() => setActiveMetadata(item)}
-                      sx={{
-                        mt: 0.5,
-                        textAlign: "left",
-                        wordBreak: "break-all",
-                        ...(isSelected && { color: highlightColor, textDecorationColor: highlightColor }),
-                      }}
-                    >
-                      {`${item.collection} - ${orderKey ?? item.id}`}
-                    </Link>
-                  </Tooltip>
+                  <Box sx={{ flex: "1 1 0", minWidth: 0 }}>
+                    <Typography variant="caption" color="text.secondary" component="div" noWrap title={item.collection}>
+                      {item.collection}
+                    </Typography>
+                    <Tooltip title={`${item.collection} - ${orderKey ?? item.id} - ${t("metadataHover")}`}>
+                      <Link
+                        component="button"
+                        variant="body2"
+                        aria-label={`${item.collection} - ${orderKey ?? item.id}`}
+                        onClick={() => setActiveMetadata(item)}
+                        sx={{
+                          display: "block", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          textAlign: "left",
+                          ...(isSelected && { color: highlightColor, textDecorationColor: highlightColor }),
+                        }}
+                      >
+                        {orderKey ?? item.id}
+                      </Link>
+                    </Tooltip>
+                    {datetime && (
+                      <Typography variant="caption" color="text.secondary" component="div" noWrap
+                        title={String(item.properties?.[DATE_KEY])}>
+                        {datetime}
+                      </Typography>
+                    )}
+                  </Box>
+                  <CardActions disableSpacing sx={{ p: 0, gap: 0.25, flexShrink: 0, maxWidth: "50%", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {renderOrderActions(item, true)}
+                  </CardActions>
                 </CardContent>
-                <CardActions
-                  sx={{
-                    // Indent to line up with the title text, past the checkbox column.
-                    pl: '40px', pr: 1.5, pt: 1.25, pb: 1.5,
-                    gap: 0.5,
-                    '& > :not(style) ~ :not(style)': { ml: 0 },
-                    '& .MuiButton-root': { whiteSpace: 'nowrap', minWidth: 'max-content' },
-                  }}
-                >
-                  {renderOrderActions(item)}
-                </CardActions>
               </Card>
             );
           })
         )}
       </Box>
 
-      {(totalDiscoveredPages > 1 || hasNext || (view === "table" && !isSearching && results.length > 0)) && (
+      {(totalDiscoveredPages > 1 || hasNext || results.length > 0) && (
         <Box
           sx={{
             display: "flex",
@@ -1265,52 +1307,78 @@ export default function ResultsPanel({
             gap: 0.5,
             mt: 1,
             mb: 1,
-            flexWrap: "wrap",
+            flexWrap: "nowrap",
+            minWidth: 0,
           }}
         >
-          {(totalDiscoveredPages > 1 || hasNext) && <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5, flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
+          {(totalDiscoveredPages > 1 || hasNext) && <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.25, flex: "1 1 0", minWidth: 0, flexWrap: "nowrap" }}>
           <Tooltip title={t("previousHover")}>
             <IconButton
               size="small"
+              aria-label={t("previousHover")}
               onClick={onPreviousPage}
               disabled={!hasPrevious}
+              sx={{ flexShrink: 0 }}
             >
               <ChevronLeftIcon />
             </IconButton>
           </Tooltip>
 
-          {Array.from({ length: totalDiscoveredPages }, (_, i) => i + 1).map(
-            (page) => (
-              <Tooltip key={page} title={t("pageHover") + " " + page}>
-                <Button
-                  size="small"
-                  variant={page === currentPage ? "contained" : "text"}
-                  onClick={() => onGoToPage(page)}
-                  sx={{ minWidth: "32px", p: "2px" }}
-                >
-                  {page}
-                </Button>
-              </Tooltip>
-            ),
-          )}
+          <Box sx={{ minWidth: 0, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
+            <Pagination
+              count={totalDiscoveredPages}
+              page={currentPage}
+              onChange={(_, page) => onGoToPage(page)}
+              size="small"
+              color="primary"
+              siblingCount={0}
+              boundaryCount={1}
+              hidePrevButton
+              hideNextButton
+              getItemAriaLabel={(_, page) => `${t("pageHover")} ${page}`}
+              sx={{
+                "& .MuiPagination-ul": { flexWrap: "nowrap" },
+                "& .MuiPaginationItem-root": { minWidth: 24, height: 28, mx: 0, px: 0.5 },
+              }}
+            />
+          </Box>
 
-          {hasNext && (
-            <Typography variant="body2" sx={{ alignSelf: "center" }}>
+          {hasNext && currentPage === totalDiscoveredPages && (
+            <Typography variant="body2" sx={{ alignSelf: "center", flexShrink: 0 }}>
               ...
             </Typography>
           )}
 
           <Tooltip title={t("nextHover")}>
-            <IconButton size="small" onClick={onNextPage} disabled={!hasNext}>
+            <IconButton size="small" aria-label={t("nextHover")} onClick={onNextPage} disabled={!hasNext} sx={{ flexShrink: 0 }}>
               <ChevronRightIcon />
             </IconButton>
           </Tooltip>
           </Box>}
-          {view === "table" && !isSearching && results.length > 0 && (
-            <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnMenuEl(e.currentTarget)} sx={{ ml: "auto", flexShrink: 0, textTransform: "none" }}>
-              {t("columns")}
-            </Button>
-          )}
+          <Box sx={{ ml: "auto", mr: 1, display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
+            <ButtonGroup size="small" variant="outlined" aria-label={`${t("exportResults")}, ${t("columns")}`}
+              sx={{ "& .MuiButtonGroup-grouped": { minWidth: 34, p: 0.5 } }}>
+              <Tooltip title={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}>
+                <span>
+                  <Button aria-label={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}
+                    disabled={isSearching || loadedResults.length === 0} onClick={handleExportResults}>
+                    <Badge badgeContent={loadedResults.length.toLocaleString()} color="secondary"
+                      sx={{ mr: loadedResults.length >= 1000 ? 1.5 : 0.5, "& .MuiBadge-badge": { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}>
+                      <DownloadIcon fontSize="small" />
+                    </Badge>
+                  </Button>
+                </span>
+              </Tooltip>
+              {view === "table" && !isSearching && results.length > 0 && (
+                <Tooltip title={t("columns")}>
+                  <Button aria-label={t("columns")} aria-haspopup="menu" aria-expanded={!!columnMenuEl}
+                    onClick={event => setColumnMenuEl(event.currentTarget)}>
+                    <ViewColumnIcon fontSize="small" />
+                  </Button>
+                </Tooltip>
+              )}
+            </ButtonGroup>
+          </Box>
         </Box>
       )}
 
@@ -1405,6 +1473,14 @@ export default function ResultsPanel({
           {t("itemMetadata")}
         </DialogTitle>
         <DialogContent dividers>
+          {metadataThumbUrl && activeMetadata && (
+            <Box
+              component="img"
+              src={metadataThumbUrl}
+              alt={`${activeMetadata.collection} - ${activeMetadata.id}`}
+              sx={{ display: "block", width: "100%", height: { xs: 180, sm: 240 }, objectFit: "contain", bgcolor: "action.hover", mb: 2 }}
+            />
+          )}
           <Table size="small">
             <TableBody>
               {activeMetadata &&
@@ -1435,6 +1511,9 @@ export default function ResultsPanel({
           </Tooltip>
         </DialogActions>
       </Dialog>
+      <Snackbar open={exportError} autoHideDuration={5000} onClose={() => setExportError(false)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="error" onClose={() => setExportError(false)}>{t("errorExportResults")}</Alert>
+      </Snackbar>
       <Snackbar open={!!sourceCopyNotice} autoHideDuration={4000} onClose={() => setSourceCopyNotice(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
         <Alert severity={sourceCopyNotice === "success" ? "success" : "error"} onClose={() => setSourceCopyNotice(null)}>
           {sourceCopyNotice === "success" ? t("stacJsonCopied") : t("stacJsonCopyFailed")}

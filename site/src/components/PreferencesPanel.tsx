@@ -41,7 +41,6 @@ export default function PreferencesPanel({
     setBaseMapId,
     setBaseMapLayer,
     searchLimit,
-    setSearchLimit,
     t,
   } = useContext(AppContext)!;
   const availableLayers = getBaseMaps();
@@ -103,13 +102,12 @@ export default function PreferencesPanel({
                   <Select
                     value={searchLimit.toString()}
                     label={t("maxResults")}
-                    onChange={(e) => setSearchLimit(Number(e.target.value))}
+                    readOnly
+                    inputProps={{ "aria-label": t("maxResults") }}
+                    SelectDisplayProps={{ "aria-readonly": true }}
                     size="small"
                   >
-                    <MenuItem value="10">10</MenuItem>
-                    <MenuItem value="50">50</MenuItem>
                     <MenuItem value="100">100</MenuItem>
-                    <MenuItem value="250">250</MenuItem>
                   </Select>
                 </Box>
               </TableCell>
