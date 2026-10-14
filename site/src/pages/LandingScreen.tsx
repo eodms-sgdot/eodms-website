@@ -35,10 +35,11 @@ import type { ExplorerExperience } from '../experiences';
 import { OrbitLoader, SkyBar, TitleCharm } from '../components/OrbitCharm';
 import AuroraLoader from '../components/AuroraLoader';
 import RiverLoader from '../components/RiverLoader';
+import IceLoader from '../components/IceLoader';
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 
-const SEARCH_LOADERS = [OrbitLoader, AuroraLoader, RiverLoader];
+const SEARCH_LOADERS = [OrbitLoader, AuroraLoader, RiverLoader, IceLoader];
 const DRAWER_WIDTH = 320;
 // Matches useIsMobile's default so the first render agrees with it.
 const MOBILE_BREAKPOINT = 768;

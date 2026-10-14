@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useContext } from "react";
+import { useEffect, useMemo, useState, useContext, type MouseEvent, type KeyboardEvent } from "react";
 import {
   Box,
   Typography,
@@ -65,6 +65,20 @@ import type { ExplorerExperience } from "../experiences";
 import NaplContactInfo from "./NaplContactInfo";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
+
+const resultActivationHandlers = (item: STACItem, onZoom: (item: STACItem) => void) => ({
+  tabIndex: 0,
+  onClick: (event: MouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element
+      && event.target.closest('button, a, input, select, textarea, label, [role="button"], [role="checkbox"], [role="menuitem"]')) return;
+    onZoom(item);
+  },
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    onZoom(item);
+  },
+});
 
 /** Publicly downloadable files on items that have no orderable product (e.g. CEOS-ARD), data files first. */
 const getDirectAssets = (item: STACItem): DownloadableAsset[] =>
@@ -934,9 +948,13 @@ export default function ResultsPanel({
               <TableRow
                 key={item.id}
                 id={`result-row-${item.id}`}
+                {...resultActivationHandlers(item, onZoom)}
+                aria-label={`${t("zoomHover")} - ${label}`}
                 onMouseEnter={() => onHoverItem(item.id)}
                 onMouseLeave={() => onHoverItem(null)}
                 sx={{
+                  cursor: "pointer",
+                  "&:focus-visible": { outline: `2px solid ${brandColor}`, outlineOffset: -2 },
                   bgcolor: isFocused ? alpha(brandColor, 0.1) : isHovered ? alpha(itemColor, 0.12) : undefined,
                   "& > td:first-of-type": { borderLeft: `4px solid ${itemColor}` },
                 }}
@@ -1126,10 +1144,14 @@ export default function ResultsPanel({
               <Card
                 key={item.id}
                 id={`result-card-${item.id}`}
+                {...resultActivationHandlers(item, onZoom)}
+                aria-label={`${t("zoomHover")} - ${orderKey ?? item.id}`}
                 onMouseEnter={() => onHoverItem(item.id)}
                 onMouseLeave={() => onHoverItem(null)}
                 sx={{
                   mb: 2,
+                  cursor: "pointer",
+                  "&:focus-visible": { outline: `2px solid ${brandColor}`, outlineOffset: -2 },
                   position: "relative",
                   borderRadius: 0,
                   borderLeft: `4px solid ${itemColor}`,
