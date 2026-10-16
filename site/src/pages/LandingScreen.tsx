@@ -32,14 +32,11 @@ import { useIsMobile, getInitials } from '../utils/RenderingUtils';
 import { getItemsExtent } from '../utils/GeometryUtils';
 import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
-import { OrbitLoader, SkyBar, TitleCharm } from '../components/OrbitCharm';
-import AuroraLoader from '../components/AuroraLoader';
-import RiverLoader from '../components/RiverLoader';
-import IceLoader from '../components/IceLoader';
+import { SkyBar, TitleCharm } from '../components/OrbitCharm';
+import LoaderCycle from '../components/LoaderCycle';
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 
-const SEARCH_LOADERS = [OrbitLoader, AuroraLoader, RiverLoader, IceLoader];
 const DRAWER_WIDTH = 320;
 // Matches useIsMobile's default so the first render agrees with it.
 const MOBILE_BREAKPOINT = 768;
@@ -78,7 +75,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
   const [processingReceipt, setProcessingReceipt] = useState<{ username: string; submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null>(null);
   const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
-  const { jobs: processingJobs, error: processingJobsError, refreshJobs, refreshJob, registerJob, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
+  const { jobs: processingJobs, error: processingJobsError, refreshJobs, refreshJob, registerJob, retryJob, retryableJobIDs, jobDetailsByID, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
   const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
     experience.fixedCollectionId
@@ -89,8 +86,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
   const [isSearching, setIsSearching] = useState(false);
   const [searchAnimation, setSearchAnimation] = useState(0);
-  const SearchLoader = SEARCH_LOADERS[searchAnimation % SEARCH_LOADERS.length];
   const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestId = useRef(0);
 
   const [selectedFootprints, setSelectedFootprints] = useState<Set<string>>(() => new Set());
   const [focusedItem, setFocusedItem] = useState<string | null>(null);
@@ -198,7 +195,6 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       try {
         headers['Authorization'] = `Bearer ${await getValidAuthToken()}`;
       } catch (e) {
-        setIsSearching(false);
         setRightOpen(false);
         throw e;
       }
@@ -232,11 +228,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * Called when the next page of results is requested. 
    */
   const handleNextPage = async () => {
+    const requestId = ++searchRequestId.current;
     try {
-      const result = await searchService.nextPage(await getHeaders());
+      const headers = await getHeaders();
+      if (requestId !== searchRequestId.current) return;
+      const result = await searchService.nextPage(headers);
+      if (requestId !== searchRequestId.current) return;
       handleSearchResult(result);
     } catch {
-      setSearchError(t('errorFetch'));
+      if (requestId === searchRequestId.current) setSearchError(t('errorFetch'));
     }
   };
 
@@ -244,11 +244,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * Called when the previous page of results is requested.
    */
   const handlePreviousPage = async () => {
+    const requestId = ++searchRequestId.current;
     try {
-      const result = await searchService.previousPage(await getHeaders());
+      const headers = await getHeaders();
+      if (requestId !== searchRequestId.current) return;
+      const result = await searchService.previousPage(headers);
+      if (requestId !== searchRequestId.current) return;
       handleSearchResult(result);
     } catch {
-      setSearchError(t('errorFetch'));
+      if (requestId === searchRequestId.current) setSearchError(t('errorFetch'));
     }
   };
 
@@ -256,11 +260,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * Called when a particular page of results is requested. 
    */
   const handleGoToPage = async (page: number) => {
+    const requestId = ++searchRequestId.current;
     try {
-      const result = await searchService.goToPage(page, await getHeaders());
+      const headers = await getHeaders();
+      if (requestId !== searchRequestId.current) return;
+      const result = await searchService.goToPage(page, headers);
+      if (requestId !== searchRequestId.current) return;
       handleSearchResult(result);
     } catch {
-      setSearchError(t('errorFetch'));
+      if (requestId === searchRequestId.current) setSearchError(t('errorFetch'));
     }
   };
 
@@ -305,6 +313,9 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * Clears the current results as well as the current AOI. 
    */
   const handleOnResultsClear = () => {
+    searchRequestId.current += 1;
+    searchService.cancel();
+    setIsSearching(false);
     setSearchResults([]);
     setLoadedResults([]);
     setProcessingCandidateId(null);
@@ -369,7 +380,9 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       return;
     }
 
+    const requestId = ++searchRequestId.current;
     setSearchError(null);
+    setSearchResults([]);
     setLoadedResults([]);
     setSelectedFootprints(new Set());
     setActiveThumbnails({});
@@ -417,16 +430,20 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     showRightPanel(true);
 
     try {
-      const result = await searchService.search(params, await getHeaders());
+      const headers = await getHeaders();
+      if (requestId !== searchRequestId.current) return;
+      const result = await searchService.search(params, headers);
+      if (requestId !== searchRequestId.current) return;
       setPageSize(params.limit);
       handleSearchResult(result, zoomToResults);
       setNumberMatched(searchService.getNumberMatched());
     } catch (e) {
+      if (requestId !== searchRequestId.current) return;
       if (axios.isCancel(e)) return;
       setSearchError(t('errorFetch'));
       setSearchResults([]);
     } finally {
-      setIsSearching(false);
+      if (requestId === searchRequestId.current) setIsSearching(false);
     }
   };
 
@@ -643,19 +660,19 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             open={isOrdersOpen}
             onClose={() => setOpenBlind(null)}
           />}
-          {experience.id === 'eodms' && <ProcessingPanel key={`${username ?? 'guest'}:${processingCandidate?.id ?? 'none'}`} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId) => {
+          {experience.id === 'eodms' && <ProcessingPanel key={`${username ?? 'guest'}:${processingCandidate?.id ?? 'none'}`} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId, inputs, collection, orderKey) => {
             setProcessingReceipt(username ? { username, submission, job, processId, itemId } : null);
             setSubmissionToastOpen(true);
-            registerJob(job);
+            registerJob(job, { processID: processId, inputs, collection, itemId, orderKey });
             void refreshJobs();
             setSelectedFootprints(new Set());
             setProcessingCandidateId(null);
-          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={() => { void refreshJobs(); }} onRefreshJob={refreshJob} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
+          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={refreshJobs} onRefreshJob={refreshJob} onRetryJob={retryJob} retryableJobIDs={retryableJobIDs} jobDetailsByID={jobDetailsByID} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
         </Toolbar>
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={isSearching ? <SearchLoader /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle start={searchAnimation} /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 

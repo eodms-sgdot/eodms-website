@@ -83,11 +83,12 @@ export default function OrderPanel({
     }
   };
 
-  const handleRetry = async (order: OrderInfo) => {
-    const key = order.collection + order.itemIds.join();
+  const handleRetry = async (order: OrderInfo, itemId: string, itemIndex: number) => {
+    const key = `${order.orderId}:${itemIndex}`;
     setRetrying(key);
     try {
-      await triggerNewOrder(order.itemIds, order.orderKeys, order.collection);
+      const orderKey = order.orderKeys[itemIndex];
+      await triggerNewOrder([itemId], orderKey ? [orderKey] : [], order.collection);
     } catch (e) {
       console.error("Order retry error:", e);
       alert(t("errorOrderSubmitFailed"));
@@ -289,18 +290,22 @@ export default function OrderPanel({
                 {t("statusFailed")} ⚠
               </Typography>
             </Tooltip>
-            <Tooltip title={t("retryOrder")}>
-              <span>
-                <IconButton
-                  size="small"
-                  color="error"
-                  disabled={retrying === order.collection + order.itemIds.join()}
-                  onClick={() => handleRetry(order)}
-                >
-                  <ReplayIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
+            {order.itemIds.map((itemId, itemIndex) => {
+              const key = `${order.orderId}:${itemIndex}`;
+              return <Tooltip key={key} title={`${t("retryOrder")} - ${itemId}`}>
+                <span>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    aria-label={`${t("retryOrder")} - ${itemId}`}
+                    disabled={retrying === key}
+                    onClick={() => void handleRetry(order, itemId, itemIndex)}
+                  >
+                    {retrying === key ? <CircularProgress size={20} /> : <ReplayIcon fontSize="small" />}
+                  </IconButton>
+                </span>
+              </Tooltip>;
+            })}
           </Box>
         );
 

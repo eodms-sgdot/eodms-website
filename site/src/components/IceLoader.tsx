@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 
-export default function IceLoader() {
+export default function IceLoader({ onComplete }: { onComplete?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => { onCompleteRef.current = onComplete; });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -93,10 +95,12 @@ export default function IceLoader() {
     verticalFade.addColorStop(1, 'transparent');
     let frame = 0;
     let start: number | null = null;
+    let completed = 0;
 
     const draw = (timestamp: number) => {
       start ??= timestamp;
-      const phase = motion.matches ? 8 : ((timestamp - start) / 1000) % 8;
+      const elapsed = (timestamp - start) / 1000;
+      const phase = motion.matches ? 8 : elapsed % 8;
       context.clearRect(0, 0, width, height);
       context.save();
       const coastLand = new Path2D(land);
@@ -132,12 +136,18 @@ export default function IceLoader() {
       context.fillStyle = verticalFade;
       context.fillRect(0, 0, width, height);
       context.restore();
-      if (!motion.matches) frame = window.requestAnimationFrame(draw);
+      if (motion.matches) return;
+      if (Math.floor(elapsed / 8) > completed) {
+        completed = Math.floor(elapsed / 8);
+        onCompleteRef.current?.();
+      }
+      frame = window.requestAnimationFrame(draw);
     };
 
     const restart = () => {
       window.cancelAnimationFrame(frame);
       start = null;
+      completed = 0;
       frame = window.requestAnimationFrame(draw);
     };
     restart();

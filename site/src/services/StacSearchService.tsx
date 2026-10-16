@@ -34,6 +34,7 @@ export class StacSearchService {
   private _sortingSupportPromise: Promise<void>;
   private _searchSupportPromise: Promise<void>;
   private abortController: AbortController | null = null;
+  private searchRequestId = 0;
 
   constructor(stacEndpoint: string, onSortingSupportResolved?: (supports: boolean) => void, 
       onSearchSupportResolved?: (supports: boolean) => void) {
@@ -175,6 +176,7 @@ export class StacSearchService {
     params: StacSearchParams,
     headers: Record<string, string>,
   ): Promise<StacSearchResult> {
+    const requestId = ++this.searchRequestId;
     await this._sortingSupportPromise;
     await this._searchSupportPromise;
     const initialUrl = this.supportsSearch ? this.buildSearchUrl(params) : this.buildItemsUrl(params);
@@ -189,7 +191,7 @@ export class StacSearchService {
       return response;
     } catch (e) {
       // Keep paging consistent with the results still on screen.
-      Object.assign(this, previous);
+      if (requestId === this.searchRequestId) Object.assign(this, previous);
       throw e;
     }
   }
@@ -247,6 +249,7 @@ export class StacSearchService {
    */
   setEndpoint(stacEndpoint: string, onSortingSupportResolved?: (supports: boolean) => void,
       onSearchSupportResolved?: (supports: boolean) => void): void {
+    this.searchRequestId += 1;
     this.stacEndpoint = stacEndpoint;
     this.urlHistory = [];
     this.currentPage = 0;
@@ -261,6 +264,7 @@ export class StacSearchService {
    * Aborts the in-flight request, if any. The awaiting call rejects with an axios cancel error.
    */
   cancel(): void {
+    this.searchRequestId += 1;
     this.abortController?.abort();
     this.abortController = null;
   }
@@ -269,6 +273,7 @@ export class StacSearchService {
    * Re-initializes the current service information.
    */
   reset(): void {
+    this.searchRequestId += 1;
     this.urlHistory = [];
     this.currentPage = 0;
     this.nextUrl = null;

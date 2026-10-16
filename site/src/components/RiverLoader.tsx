@@ -17,8 +17,10 @@ const LAKE_OUTLINE = [
   [186, 141], [177, 151],
 ];
 
-export default function RiverLoader() {
+export default function RiverLoader({ onComplete }: { onComplete?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => { onCompleteRef.current = onComplete; });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -35,6 +37,7 @@ export default function RiverLoader() {
     let frame = 0;
     let start: number | null = null;
     let ready = false;
+    let completed = 0;
     let imageLeft = 0;
     let imageTop = 0;
     let imageWidth = 0;
@@ -88,12 +91,18 @@ export default function RiverLoader() {
       context.fillStyle = verticalFade;
       context.fillRect(0, 0, width, height);
       context.restore();
-      if (!motion.matches) frame = window.requestAnimationFrame(draw);
+      if (motion.matches) return;
+      if (Math.floor(time / 8) > completed) {
+        completed = Math.floor(time / 8);
+        onCompleteRef.current?.();
+      }
+      frame = window.requestAnimationFrame(draw);
     };
 
     const restart = () => {
       window.cancelAnimationFrame(frame);
       start = null;
+      completed = 0;
       if (ready) frame = window.requestAnimationFrame(draw);
     };
 

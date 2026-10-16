@@ -5,6 +5,7 @@ import { AppContext } from './AppContext';
 import { darkMode, lightMode, type DisplayMode } from './theme';
 import { getTranslation, type Language } from './i18n';
 import LandingScreen from './pages/LandingScreen';
+import AnimationsScreen from './pages/AnimationsScreen';
 import type { FilterValue } from './types';
 import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
@@ -315,6 +316,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
             <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
+            <Route path="/animations" element={<AnimationsScreen />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </HashRouter>

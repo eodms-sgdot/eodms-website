@@ -3,6 +3,7 @@ import { Alert, Box, Button, CircularProgress, Collapse, IconButton, Link, MenuI
 import { alpha } from '@mui/material/styles';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ReplayIcon from '@mui/icons-material/Replay';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -16,12 +17,15 @@ import { getProcessingAssets, ProcessingService, type JobResult, type Processing
 interface ProcessingPanelProps {
   open: boolean;
   onClose: () => void;
-  onSubmitted: (submission: ProcessingSubmission, job: ProcessingJob | null, processId: string, itemId: string) => void;
+  onSubmitted: (submission: ProcessingSubmission, job: ProcessingJob | null, processId: string, itemId: string, inputs: Record<string, unknown>, collection: string, orderKey?: string) => void;
   receipt: { submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null;
   jobs: ProcessingJob[] | null;
   jobsError: string;
-  onRefreshJobs: () => void;
+  onRefreshJobs: () => Promise<void>;
   onRefreshJob: (jobID: string) => Promise<void>;
+  onRetryJob: (jobID: string) => Promise<boolean>;
+  retryableJobIDs: Set<string>;
+  jobDetailsByID: Record<string, { collection?: string; itemId?: string; orderKey?: string }>;
   onClearHistory: (jobID?: string) => void;
   candidate: STACItem | null;
   candidates: STACItem[];
@@ -57,7 +61,7 @@ function messageFor(cause: unknown): string {
     body?.error, body?.request_id && `request_id: ${body.request_id}`].filter(Boolean).join(' - ');
 }
 
-export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsError, onRefreshJobs, onRefreshJob, onClearHistory, candidate, candidates, onSelectCandidate }: ProcessingPanelProps) {
+export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsError, onRefreshJobs, onRefreshJob, onRetryJob, retryableJobIDs, jobDetailsByID, onClearHistory, candidate, candidates, onSelectCandidate }: ProcessingPanelProps) {
   const { username, language, getValidAuthToken, t } = useContext(AppContext)!;
   const service = useMemo(() => new ProcessingService(import.meta.env.VITE_PROCESSING_URL || '/processing', getValidAuthToken), [getValidAuthToken]);
   const [processes, setProcesses] = useState<ProcessSummary[]>([]);
@@ -69,7 +73,9 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [jobResults, setJobResults] = useState<Record<string, JobResult>>({});
-  const [refreshingJobID, setRefreshingJobID] = useState<string | null>(null);
+  const [refreshingJobIDs, setRefreshingJobIDs] = useState<Set<string>>(() => new Set());
+  const [refreshingAllJobs, setRefreshingAllJobs] = useState(false);
+  const [retryingJobID, setRetryingJobID] = useState<string | null>(null);
   const loadingResults = useRef(new Set<string>());
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
@@ -129,9 +135,34 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
   };
 
   const refreshJob = async (jobID: string) => {
-    setRefreshingJobID(jobID);
+    setRefreshingJobIDs(previous => new Set(previous).add(jobID));
     try { await onRefreshJob(jobID); }
-    finally { setRefreshingJobID(null); }
+    finally {
+      setRefreshingJobIDs(previous => {
+        const updated = new Set(previous);
+        updated.delete(jobID);
+        return updated;
+      });
+    }
+  };
+
+  const refreshAllJobs = async () => {
+    setRefreshingAllJobs(true);
+    try {
+      await onRefreshJobs();
+      const activeJobIDs = visibleJobs?.filter(job => job.status === 'accepted' || job.status === 'running')
+        .map(job => job.jobID) ?? [];
+      for (const jobID of activeJobIDs) await refreshJob(jobID);
+    } finally { setRefreshingAllJobs(false); }
+  };
+
+  const retryJob = async (jobID: string) => {
+    setRetryingJobID(jobID);
+    setError('');
+    try {
+      if (!await onRetryJob(jobID)) setError(t('processingRetryUnavailable'));
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setRetryingJobID(null); }
   };
 
   const execute = async () => {
@@ -149,7 +180,8 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
       const locationJobId = response.location?.match(/\/jobs\/([^/?#]+)/)?.[1];
       onSubmitted(response, job ?? (locationJobId ? {
         type: 'process', jobID: decodeURIComponent(locationJobId), status: 'accepted', processID: selected,
-      } : null), selected, candidate.id);
+      } : null), selected, candidate.id, parsed as Record<string, unknown>, candidate.collection,
+      candidate.properties.order_key == null ? undefined : String(candidate.properties.order_key));
     } catch (cause) { setError(messageFor(cause)); }
     finally { setBusy(false); }
   };
@@ -215,8 +247,9 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
                 onClick={() => onClearHistory()}><DeleteSweepIcon fontSize="small" /></IconButton></span>
             </Tooltip>
             <Tooltip title={t('processingRefresh')}>
-              <IconButton size="small" aria-label={t('processingRefresh')} onClick={onRefreshJobs}>
-                <RefreshIcon fontSize="small" />
+              <IconButton size="small" aria-label={t('processingRefresh')} disabled={refreshingAllJobs || refreshingJobIDs.size > 0}
+                onClick={() => void refreshAllJobs()}>
+                {refreshingAllJobs ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
           </Box>
@@ -228,9 +261,14 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
           {visibleJobs.map(job => {
             const httpAssets = getProcessingAssets(jobResults[job.jobID]);
             const s3Assets = getProcessingAssets(jobResults[job.jobID], 's3');
+            const itemDetails = jobDetailsByID[job.jobID];
+            const canRetry = retryableJobIDs.has(job.jobID);
             return <TableRow key={job.jobID} hover>
             <TableCell sx={{ overflowWrap: 'anywhere', maxWidth: 0, width: '75%' }}>
               <Typography variant="body2">{job.processID || t('processingJobs')}</Typography>
+              {itemDetails?.collection && <Typography variant="body2" color="text.secondary">{t('collection')}: {itemDetails.collection}</Typography>}
+              {itemDetails?.itemId && <Typography variant="body2" color="text.secondary">{t('itemId')}: {itemDetails.itemId}</Typography>}
+              {itemDetails?.orderKey && <Typography variant="body2" color="text.secondary">{t('orderKey')}: {itemDetails.orderKey}</Typography>}
               <Typography variant="caption" color="text.secondary">{job.jobID}</Typography>
               {job.created && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{new Date(job.created).toLocaleString(language)}</Typography>}
               <Link component="button" variant="caption" aria-expanded={expandedJob === job.jobID} onClick={() => void inspectJob(job)}>
@@ -273,9 +311,15 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
                     </Typography>
                   </Tooltip>}
                 {(job.status === 'accepted' || job.status === 'running') && <Tooltip title={t('processingRefresh')}>
-                  <span><IconButton size="small" aria-label={t('processingRefresh')} disabled={refreshingJobID === job.jobID}
+                  <span><IconButton size="small" aria-label={t('processingRefresh')} disabled={refreshingAllJobs || refreshingJobIDs.has(job.jobID)}
                     onClick={() => void refreshJob(job.jobID)}>
-                    {refreshingJobID === job.jobID ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+                    {refreshingJobIDs.has(job.jobID) ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+                  </IconButton></span>
+                </Tooltip>}
+                {job.status === 'failed' && <Tooltip title={t(canRetry ? 'retryProcessingJob' : 'processingRetryInputsUnavailable')}>
+                  <span><IconButton size="small" color="error" aria-label={`${t(canRetry ? 'retryProcessingJob' : 'processingRetryInputsUnavailable')} - ${job.jobID}`}
+                    disabled={!canRetry || retryingJobID === job.jobID} onClick={() => void retryJob(job.jobID)}>
+                    {retryingJobID === job.jobID ? <CircularProgress size={20} /> : <ReplayIcon fontSize="small" />}
                   </IconButton></span>
                 </Tooltip>}
                 {job.status === 'successful' && httpAssets.length > 0 && <AssetDownloadButton assets={httpAssets} compact />}
