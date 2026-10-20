@@ -82,6 +82,9 @@ export default function App() {
   const refreshEndpoint = import.meta.env.DEV
     ? '/aaa/v1/refresh'
     : import.meta.env.VITE_DEFAULT_REFRESH_URL || '/aaa/v1/refresh';
+  const usersEndpoint = import.meta.env.DEV
+    ? '/aaa/v1/users'
+    : import.meta.env.VITE_DEFAULT_USERS_URL || '/aaa/v1/users';
 
   const [searchLimit, setSearchLimit] = useState<number>(100);
 
@@ -288,7 +291,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={{ 
-      authEndpoint, refreshEndpoint, 
+      authEndpoint, refreshEndpoint, usersEndpoint,
       displayMode, setDisplayMode,
       baseMapId, setBaseMapId,
       baseMapLayer, setBaseMapLayer,

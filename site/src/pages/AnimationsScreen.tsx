@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import LoaderCycle from '../components/LoaderCycle';
-import { SEARCH_LOADERS } from '../components/searchLoaderList';
+import { NAPL_SEARCH_LOADERS, SEARCH_LOADERS, type SearchLoader } from '../components/searchLoaderList';
 
 const PANEL_SX = {
   display: 'flex',
@@ -17,29 +17,40 @@ const PANEL_SX = {
   border: '2px solid transparent',
 };
 
-/** Preview of the search loaders: the sequence as shown during a search, plus each loader on its own. */
-export default function AnimationsScreen() {
+/** One experience's search sequence as shown during a search, plus each of its loaders on its own. */
+function LoaderSet({ title, loaders }: { title: string; loaders: SearchLoader[] }) {
   const [active, setActive] = useState(0);
 
   return (
-    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, minHeight: '100vh' }}>
-      <Typography variant="h5">Search animations</Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6">{title}</Typography>
       <Box>
         <Typography variant="subtitle1" gutterBottom>
-          Search sequence: {SEARCH_LOADERS[active].name}
+          Search sequence: {loaders[active].name}
         </Typography>
         <Box sx={PANEL_SX}>
-          <LoaderCycle onIndexChange={setActive} />
+          <LoaderCycle loaders={loaders} onIndexChange={setActive} />
         </Box>
       </Box>
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-        {SEARCH_LOADERS.map(({ name, Loader }, index) => (
+        {loaders.map(({ name, Loader }, index) => (
           <Box key={name} sx={{ ...PANEL_SX, borderColor: index === active ? 'primary.main' : 'transparent' }}>
             <Loader />
             <Typography variant="body2">{name}</Typography>
           </Box>
         ))}
       </Box>
+    </Box>
+  );
+}
+
+/** Preview of the search loaders for each experience. */
+export default function AnimationsScreen() {
+  return (
+    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 4, minHeight: '100vh' }}>
+      <Typography variant="h5">Search animations</Typography>
+      <LoaderSet title="EODMS" loaders={SEARCH_LOADERS} />
+      <LoaderSet title="NAPL" loaders={NAPL_SEARCH_LOADERS} />
     </Box>
   );
 }

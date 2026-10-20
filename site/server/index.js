@@ -67,6 +67,28 @@ app.get('/aaa/v1/refresh', (req, res) => {
 })
 
 /*
+ * GET, PATCH - /aaa/v1/users/:username - Redirects user profile requests to the AAA service.
+ */
+const proxyUser = (req, res) => {
+    axios.request({
+        method: req.method,
+        url: `${eodmsDomain}/aaa/v1/users/${encodeURIComponent(req.params.username)}`,
+        headers: {Authorization : req.headers['authorization']},
+        data: req.method === 'PATCH' ? req.body : undefined,
+    }).then(response => {
+        res.status(response.status).send(response.data)
+    }).catch(error => {
+        // Pass the upstream body through so validation messages reach the panel.
+        const status = error.response?.status || error.status || 500;
+        const retryAfter = error.response?.headers?.['retry-after'];
+        if (retryAfter) res.set('Retry-After', retryAfter)
+        res.status(status).send(error.response?.data ?? {'message' : error.message, 'code' : error.code, 'status' : error.status})
+    })
+}
+app.get('/aaa/v1/users/:username', proxyUser)
+app.patch('/aaa/v1/users/:username', proxyUser)
+
+/*
  * Server listener
  */
 app.listen(5000, () =>{

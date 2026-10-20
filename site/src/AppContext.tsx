@@ -9,6 +9,7 @@ import type { BaseMap, BaseMapId } from './basemaps';
 export interface AppContextType {
   authEndpoint: string;
   refreshEndpoint: string;
+  usersEndpoint: string;
   displayMode: DisplayMode | null;
   setDisplayMode: (displayMode: DisplayMode | null) => void;
   searchLimit : number;

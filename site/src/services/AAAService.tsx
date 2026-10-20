@@ -1,5 +1,70 @@
 import axios, { AxiosError } from 'axios';
 import type { aaaRequest, aaaResponse } from '../types';
+import type { TranslationKey } from '../i18n';
+
+/** Profile fields the AAA users API accepts in a PATCH, matching the EODMS CLI. */
+export interface UserProfileFields {
+    given_name?: string;
+    surname?: string;
+    email?: string;
+    address?: string;
+    language?: string;
+}
+
+const userUrl = (usersEndpoint: string, username: string) =>
+    `${usersEndpoint.replace(/\/+$/, '')}/${encodeURIComponent(username)}`;
+
+/**
+ * Retrieves the signed-in user's profile from the AAA users API.
+ */
+export const getUserProfile = async (usersEndpoint: string, username: string, accessToken: string): Promise<unknown> => {
+    const headers = { 'Authorization': `Bearer ${accessToken}` };
+    return (await axios.get(userUrl(usersEndpoint, username), { headers, withCredentials: true })).data;
+}
+
+/**
+ * Updates profile fields, or the password, through the AAA users API.
+ */
+export const updateUserProfile = async (usersEndpoint: string, username: string, accessToken: string,
+    patch: UserProfileFields | { password: string }): Promise<unknown> => {
+    const headers = { 'Authorization': `Bearer ${accessToken}` };
+    return (await axios.patch(userUrl(usersEndpoint, username), patch, { headers, withCredentials: true })).data;
+}
+
+const pick = (source: unknown, ...path: string[]) => path.reduce<unknown>((value, key) =>
+    value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, source);
+
+// Non-text values (e.g. a structured address) come back undefined so they are left alone.
+const text = (value: unknown) => typeof value === 'string' ? value : value == null ? '' : undefined;
+
+/**
+ * Flattens a profile response, nested (`personal-information`) or flat, into patchable fields.
+ */
+export function readUserProfile(profile: unknown): UserProfileFields {
+    const name = ['personal-information', 'identification', 'name'];
+    const contact = ['personal-information', 'contact-information'];
+    return {
+        given_name: text(pick(profile, ...name, 'given-name') ?? pick(profile, 'given_name')),
+        surname: text(pick(profile, ...name, 'surname') ?? pick(profile, 'surname')),
+        email: text(pick(profile, ...contact, 'email') ?? pick(profile, 'email')),
+        address: text(pick(profile, ...contact, 'address') ?? pick(profile, 'address')),
+        language: text(pick(profile, 'personal-information', 'language') ?? pick(profile, 'language')),
+    };
+}
+
+/**
+ * Maps a users API error to a message key, plus the server's own message for request errors.
+ */
+export function handleUserProfileError(error: AxiosError): { key: TranslationKey; detail?: string } {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) return { key: 'errorCredentialsExpired' };
+    const key = (handleAAAError(error) ?? 'profileRequestFailed') as TranslationKey;
+    if (!status || status < 400 || status >= 500 || status === 429) return { key };
+    const data = error.response?.data;
+    const detail = [pick(data, 'message'), pick(data, 'error'), pick(data, 'detail')]
+        .find((value): value is string => typeof value === 'string' && value.length > 0);
+    return { key, detail };
+}
 
 /**
  * Retrieves a login token from the AAA service

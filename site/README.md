@@ -51,7 +51,41 @@ local proxy or domain variables.
 The app automatically shows the `PROXY` badge when running through the local
 Vite development server. No environment setting is needed.
 
+## NAPL Orders
+
+The NAPL basket stores separate order lines, including repeated catalog UUIDs.
+Each line has independent media type, file format, resolution, and positive
+integer quantity. Existing saved basket entries default to quantity 1. Duplicate
+and remove controls operate on line IDs, not catalog UUIDs. Quantities persist
+with the basket, are sent as `items[].quantity`, and appear in the confirmation
+summary. The service counts total units toward its hourly limit. The displayed
+Order ID prefers the API's integer `order_number`, with a UUID fallback for
+older responses.
+
+The service's `media_type_options` rules drive the per-line format and resolution
+controls. Digital uses the existing digital formats; Paper Print offers Contact
+Print and Enlargement, with no resolution. Only Digital requires resolution.
+Other media disable and omit format and resolution fields. Switching media resets incompatible choices while
+retaining compatible ones; saved Contact Print/Enlargement media entries are
+converted to Paper Print with the corresponding print format when the service
+advertises the new rules. Older services without these rules retain their
+previous all-fields behavior until upgraded.
+
+Each line also has an optional Flight Line Index Map selector: Not requested,
+PDF, or Paper. The selectable formats come from the service's
+`flight_line_index_maps` list; the control is disabled until the service
+advertises this capability. Selections persist in the basket and are copied
+with duplicated lines. The request carries `items[].options.flight_line_index_map`
+only when selected, using `PDF` or `Paper` even in the French UI. The confirmation
+summary shows each line's choice. Older saved lines have no assumed map format.
+
 ## Production Build
+
+User profile viewing, editing, and password changes are disabled by default.
+Their implementation is preserved behind `VITE_ENABLE_USER_PROFILE=true`.
+Only enable it once the AAA users API is ready. This is a build-time setting:
+restart Vite for development, or rebuild and redeploy for production.
+Login, token refresh, and logout are unaffected.
 
 Build the frontend with:
 

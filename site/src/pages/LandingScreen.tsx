@@ -34,6 +34,7 @@ import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
 import { SkyBar, TitleCharm } from '../components/OrbitCharm';
 import LoaderCycle from '../components/LoaderCycle';
+import { NAPL_SEARCH_LOADERS, SEARCH_LOADERS } from '../components/searchLoaderList';
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 
@@ -672,7 +673,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle start={searchAnimation} /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
@@ -708,7 +709,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               ? "rgba(0, 0, 0, 0.8)"
               : "rgba(255, 255, 255, 0.8)"
             },
-            '& .leaflet-tile-pane, & .leaflet-bar, & .leaflet-overlay-pane': {
+            '& .leaflet-tile-pane, & .leaflet-bar': {
               color: "#000000",
               filter: displayMode == 'dark'
               ? 'invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%)' 

@@ -33,9 +33,7 @@ import {
   Link,
   LinearProgress,
   CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
+  TextField,
   Snackbar,
   Alert,
 } from "@mui/material";
@@ -49,6 +47,8 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DownloadIcon from "@mui/icons-material/Download";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import LuggageIcon from "@mui/icons-material/Luggage";
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import DownloadDoneIcon from "@mui/icons-material/DownloadDone";
@@ -61,9 +61,10 @@ import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import ScienceIcon from "@mui/icons-material/Science";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
-import { getNaplOrderOptions, submitNaplOrder, type NaplOrderOptions } from "../services/NaplOrderService";
+import { getNaplOrderOptions, normalizeNaplSelection, submitNaplOrder, type NaplOrderOptions, type NaplOrderSelection } from "../services/NaplOrderService";
 import type { ExplorerExperience } from "../experiences";
 import NaplContactInfo from "./NaplContactInfo";
+import { loadNaplBasket, saveNaplBasket, type NaplBasketEntry } from "../utils/NaplBasket";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
 
@@ -154,12 +155,12 @@ const PREFERRED_COLUMNS = [
 const isTemporalKey = (key: string) => /datetime$|^created$|^updated$/.test(key);
 const columnLabel = (key: string) => key.split(":").pop()!.replace(/_/g, " ");
 
-const formatCell = (key: string, value: unknown) => {
+const formatCell = (key: string, value: unknown, dateOnly = false) => {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.map(entry => typeof entry === "object" ? JSON.stringify(entry) : String(entry)).join(", ");
   if (typeof value === "object") return JSON.stringify(value);
   const text = String(value);
-  return isTemporalKey(key) ? text.slice(0, 16).replace("T", " ") : text;
+  return isTemporalKey(key) ? text.slice(0, dateOnly ? 10 : 16).replace("T", " ") : text;
 };
 
 const loadColumnPrefs = (): string[] | null => {
@@ -331,23 +332,47 @@ export default function ResultsPanel({
   const [cartBusy, setCartBusy] = useState(false);
   const isNaplExperience = experienceId === "napl";
   const [naplOptions, setNaplOptions] = useState<NaplOrderOptions | null>(null);
-  const [naplTargetItems, setNaplTargetItems] = useState<STACItem[]>([]);
+  const [naplTargetItems, setNaplTargetItemsState] = useState<NaplBasketEntry[]>(loadNaplBasket);
+  const [naplStorageError, setNaplStorageError] = useState(false);
   const [naplDialogOpen, setNaplDialogOpen] = useState(false);
   const [naplOptionsLoading, setNaplOptionsLoading] = useState(false);
   const [naplSubmitting, setNaplSubmitting] = useState(false);
   const [naplError, setNaplError] = useState<string | null>(null);
-  const [naplMediaType, setNaplMediaType] = useState("");
-  const [naplFileFormat, setNaplFileFormat] = useState("");
-  const [naplResolution, setNaplResolution] = useState("");
+  const naplItemOptions = Object.fromEntries(naplTargetItems.map(entry => [entry.id, entry.options]));
+  const naplMediaLabels: Record<string, string> = {
+    PaperPrint: t("naplPaperPrint"),
+    Mosaic: t("naplMosaic"),
+    ContactTransparency: t("naplContactTransparency"),
+    Uncorrected: t("naplUncorrected"),
+    TransparencyEnlargement: t("naplTransparencyEnlargement"),
+  };
+  const naplPhotoCounts = new Map<string, number>();
+  for (const entry of naplTargetItems) {
+    const count = (naplPhotoCounts.get(entry.itemId) ?? 0) + entry.quantity;
+    naplPhotoCounts.set(entry.itemId, count);
+  }
+  const renderValiseCount = (itemId: string) => (
+    <Badge badgeContent={naplPhotoCounts.get(itemId) ?? 0} color="secondary" max={100}
+      aria-label={t("naplValiseCount").replace("{count}", String(naplPhotoCounts.get(itemId) ?? 0))}>
+      <LuggageIcon fontSize="small" />
+    </Badge>
+  );
   const [naplConfirmation, setNaplConfirmation] = useState<{
     orderId?: string;
-    itemLabels: string[];
-    mediaType: string;
-    fileFormat: string;
-    imageResolution: number;
+    items: { id: string; label: string; quantity: number; options: NaplOrderSelection }[];
   } | null>(null);
   const [naplNotice, setNaplNotice] = useState<string | null>(null);
   const [cartError, setCartError] = useState<string | null>(null);
+  const setNaplTargetItems = (update: NaplBasketEntry[] | ((previous: NaplBasketEntry[]) => NaplBasketEntry[])) => {
+    const entries = typeof update === "function" ? update(naplTargetItems) : update;
+    try {
+      saveNaplBasket(entries);
+      setNaplStorageError(false);
+    } catch {
+      setNaplStorageError(true);
+    }
+    setNaplTargetItemsState(entries);
+  };
   const needsLogin = (item: STACItem) => !!item.assets.product && !(item.assets.product.href && !item.assets.product["auth:refs"]);
   const cartLoginBlocked = isNaplExperience
     ? (!userId || !authToken) && cartItems.some(item => !item.assets.product || needsLogin(item))
@@ -364,23 +389,32 @@ export default function ResultsPanel({
   };
 
   const openNaplOrder = async (items: STACItem[]) => {
-    if (items.length > 100) {
+    if (naplSubmitting || naplOptionsLoading) return;
+    if (naplTargetItems.length + items.length > 100) {
       setNaplError(t("naplOrderLimit"));
       setNaplDialogOpen(true);
       return;
     }
-    setNaplTargetItems(items);
     setNaplDialogOpen(true);
     setNaplError(null);
-    if (naplOptions) return;
 
     setNaplOptionsLoading(true);
     try {
       const options = await getNaplOrderOptions();
       setNaplOptions(options);
-      setNaplMediaType(options.media_types[0] ?? "");
-      setNaplFileFormat(options.file_formats[0] ?? "");
-      setNaplResolution(String(options.image_resolutions[0] ?? ""));
+      const entries = items.map(item => ({
+        id: crypto.randomUUID(),
+        itemId: item.id,
+        quantity: 1,
+        label: getNaplItemLabel(item, {
+          roll: t("naplRollLabel"), photo: t("naplPhotoLabel"), unavailable: t("naplRollPhotoUnavailable"),
+        }),
+        options: normalizeNaplSelection({ media_type: options.media_types[0] ?? "" }, options),
+      }));
+      setNaplTargetItems(previous => [
+        ...previous.map(entry => ({ ...entry, options: normalizeNaplSelection(entry.options, options) })),
+        ...entries,
+      ]);
     } catch (error) {
       setNaplError(error instanceof Error ? error.message : t("naplOptionsUnavailable"));
     } finally {
@@ -388,31 +422,50 @@ export default function ResultsPanel({
     }
   };
 
+  const naplSelectionValid = naplTargetItems.length > 0 && naplTargetItems.length <= 100
+    && naplTargetItems.every(item => {
+      const options = naplItemOptions[item.id];
+      const rule = naplOptions?.media_type_options[options.media_type];
+      return Number.isInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 2147483647
+        && options && naplOptions?.media_types.includes(options.media_type)
+        && rule
+        && (rule.file_formats.length ? rule.file_formats.includes(options.file_format ?? "") : options.file_format === undefined)
+        && (rule.image_resolutions.length ? rule.image_resolutions.includes(options.image_resolution ?? 0) : options.image_resolution === undefined)
+        && (options.flight_line_index_map === undefined
+          || naplOptions.flight_line_index_maps.includes(options.flight_line_index_map));
+    });
+
+  const updateNaplItemOptions = (id: string, patch: Partial<NaplOrderSelection>) => {
+    if (!naplOptions) return;
+    setNaplTargetItems(previous => previous.map(entry => entry.id === id
+      ? { ...entry, options: normalizeNaplSelection({ ...entry.options, ...patch }, naplOptions) } : entry));
+  };
+
   const handleNaplSubmit = async () => {
-    if (!naplMediaType || !naplFileFormat || !naplResolution || !authToken) return;
+    if (!naplSelectionValid || !authToken || naplSubmitting) return;
     setNaplSubmitting(true);
     setNaplError(null);
     try {
-      const response = await submitNaplOrder(naplTargetItems.map(item => item.id), {
-        media_type: naplMediaType,
-        file_format: naplFileFormat,
-        image_resolution: Number(naplResolution),
-      }, await getValidAuthToken());
-      const orderId = response.order_id ? ` (${response.order_id})` : "";
+      const response = await submitNaplOrder(naplTargetItems.map(item => ({
+        unique_identifier: item.itemId,
+        quantity: item.quantity,
+        options: naplItemOptions[item.id],
+      })), await getValidAuthToken());
+      const displayOrderId = response.order_number ?? response.order_id;
+      const orderId = displayOrderId !== undefined ? ` (${displayOrderId})` : "";
       setNaplConfirmation({
-        orderId: response.order_id ? String(response.order_id) : undefined,
-        itemLabels: naplTargetItems.map(item => getNaplItemLabel(item, {
-          roll: t("naplRollLabel"),
-          photo: t("naplPhotoLabel"),
-          unavailable: t("naplRollPhotoUnavailable"),
+        orderId: displayOrderId !== undefined ? String(displayOrderId) : undefined,
+        items: naplTargetItems.map(item => ({
+          id: item.id,
+          label: item.label,
+          quantity: item.quantity,
+          options: naplItemOptions[item.id],
         })),
-        mediaType: naplMediaType,
-        fileFormat: naplFileFormat,
-        imageResolution: Number(naplResolution),
       });
       setNaplNotice(`${t("naplOrderSubmitted")}${orderId}`);
       setNaplDialogOpen(false);
-      if (naplTargetItems.some(item => selectedFootprints.has(item.id))) onClearCart();
+      setNaplTargetItems([]);
+      if (naplTargetItems.some(item => selectedFootprints.has(item.itemId))) onClearCart();
     } catch (error) {
       setNaplError(error instanceof Error ? error.message : t("errorOrderSubmitFailed"));
     } finally {
@@ -683,6 +736,7 @@ export default function ResultsPanel({
     const orderKey: string | null = item.properties?.order_key ? String(item.properties.order_key) : null;
     const filesize = associatedOrder ? getFilesizeFromUrl(associatedOrder.downloadUrl ?? null) : '';
     const directAssets = canOrderItem ? [] : getDirectAssets(item);
+    const valiseActionLabel = `${t("naplValiseAdd")} (${t("naplValiseCount").replace("{count}", String(naplPhotoCounts.get(item.id) ?? 0))})`;
 
     if (compact) {
       const order = () => handleCreateOrder(item.id, orderKey ?? '', item.collection);
@@ -691,9 +745,9 @@ export default function ResultsPanel({
 
       if (isNaplExperience && !canOrderItem) {
         action = (
-          <Tooltip title={userId && authToken ? t("naplOrderAction") : t("loginToOrder")}>
-            <span><IconButton size="small" color="primary" disabled={!userId || !authToken} aria-label={t("naplOrderAction")} onClick={() => void openNaplOrder([item])}>
-              <Inventory2Icon fontSize="small" />
+          <Tooltip title={userId && authToken ? valiseActionLabel : t("loginToOrder")}>
+            <span><IconButton size="small" color="primary" disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} aria-label={valiseActionLabel} onClick={() => void openNaplOrder([item])}>
+              {renderValiseCount(item.id)}
             </IconButton></span>
           </Tooltip>
         );
@@ -789,8 +843,8 @@ export default function ResultsPanel({
       <>
         {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
         {isNaplExperience && !canOrderItem ? (
-            <Button size="small" variant="outlined" startIcon={<Inventory2Icon />} disabled={!userId || !authToken} onClick={() => void openNaplOrder([item])}>
-              {t("naplOrderAction")}
+            <Button size="small" variant="outlined" startIcon={renderValiseCount(item.id)} aria-label={valiseActionLabel} disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} onClick={() => void openNaplOrder([item])}>
+              {t("naplValiseAdd")}
             </Button>
         ) : isOrderingSupported && (
           <>
@@ -1026,7 +1080,7 @@ export default function ResultsPanel({
                     {renderOrderActions(item, true)}
                   </Box>
                 </TableCell>
-                {dateKey && <TableCell>{formatCell(dateKey, item.properties?.[dateKey])}</TableCell>}
+                {dateKey && <TableCell>{formatCell(dateKey, item.properties?.[dateKey], isNaplExperience)}</TableCell>}
                 <TableCell sx={{ width: 160, maxWidth: 160, overflow: "hidden" }}>
                   <Tooltip title={`${item.collection} - ${label} - ${t("metadataHover")}`}>
                     <Link
@@ -1040,7 +1094,7 @@ export default function ResultsPanel({
                   </Tooltip>
                 </TableCell>
                 {otherKeys.map(key => (
-                  <TableCell key={key}>{formatCell(key, item.properties?.[key])}</TableCell>
+                  <TableCell key={key}>{formatCell(key, item.properties?.[key], isNaplExperience)}</TableCell>
                 ))}
               </TableRow>
             );
@@ -1109,6 +1163,14 @@ export default function ResultsPanel({
         </Box>
       </Box>
 
+      {isNaplExperience && (
+        <Box sx={{ px: 2, py: 0.5, borderBottom: 1, borderColor: "divider" }}>
+          <Button startIcon={<LuggageIcon />} onClick={() => void openNaplOrder([])} disabled={naplSubmitting || naplOptionsLoading}>
+            {t("naplValise")} ({naplTargetItems.length})
+          </Button>
+          {naplStorageError && <Alert severity="warning">{t("naplValiseStorageError")}</Alert>}
+        </Box>
+      )}
       {cartItems.length > 0 && (
         <Box sx={{ px: 2, py: 0.5, display: "flex", alignItems: "center", gap: 1, bgcolor: alpha(brandColor, 0.08), borderBottom: 1, borderColor: "divider" }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
@@ -1120,10 +1182,10 @@ export default function ResultsPanel({
             </Tooltip>
             <ButtonGroup size="small" variant="outlined" aria-label={`${t('cart')} ${t('actions')}`}
               sx={{ '& .MuiButtonGroup-grouped': { minWidth: 34, px: 0.5, py: 0.5 } }}>
-              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : isNaplExperience ? `${t("naplOrderSelected")} (${cartItems.length})` : t("downloadCartHover")}>
+              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : isNaplExperience && !cartItems[0]?.assets.product ? `${t("naplValiseAdd")} (${cartItems.length})` : t("downloadCartHover")}>
                 <span>
-                  <Button aria-label={isNaplExperience ? `${t("naplOrderSelected")} (${cartItems.length})` : t("download")} disabled={cartBusy || cartLoginBlocked} onClick={handleCartDownload}>
-                    {cartBusy ? <CircularProgress size={20} /> : isNaplExperience ? <Inventory2Icon fontSize="small" /> : <DownloadIcon fontSize="small" />}
+                  <Button aria-label={isNaplExperience && !cartItems[0]?.assets.product ? `${t("naplValiseAdd")} (${cartItems.length})` : t("download")} disabled={cartBusy || cartLoginBlocked || naplSubmitting || naplOptionsLoading} onClick={handleCartDownload}>
+                    {cartBusy ? <CircularProgress size={20} /> : isNaplExperience && !cartItems[0]?.assets.product ? <LuggageIcon fontSize="small" /> : <DownloadIcon fontSize="small" />}
                   </Button>
                 </span>
               </Tooltip>
@@ -1173,7 +1235,7 @@ export default function ResultsPanel({
             const isFocused = item.id === focusedItem;
             const thumbUrl = buildThumbUrl(item);
             const orderKey:string|null = item.properties?.order_key ? String(item.properties?.order_key) : null;
-            const datetime = formatCell(DATE_KEY, item.properties?.[DATE_KEY]);
+            const datetime = formatCell(DATE_KEY, item.properties?.[DATE_KEY], isNaplExperience);
 
             return (
               <Card
@@ -1382,50 +1444,85 @@ export default function ResultsPanel({
         </Box>
       )}
 
-      <Dialog open={naplDialogOpen} onClose={() => !naplSubmitting && setNaplDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{t("naplOrderTitle")}</DialogTitle>
-        <DialogContent dividers sx={{ display: "grid", gap: 2, pt: 2 }}>
+      <Dialog open={naplDialogOpen} onClose={() => !naplSubmitting && setNaplDialogOpen(false)} maxWidth="md" fullWidth
+        slotProps={{ paper: { sx: { maxWidth: 640 } } }}>
+        <DialogTitle>{t("naplValise")}</DialogTitle>
+        <DialogContent dividers sx={{ display: "grid", gap: 3, py: 3, px: { xs: 2, sm: 3 } }}>
           {naplError && <Alert severity="error">{naplError}</Alert>}
-          <Box>
-            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-              {naplTargetItems.length} {t("itemId")}{naplTargetItems.length === 1 ? "" : "s"}
-            </Typography>
-            <Box sx={{ maxHeight: 112, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
-              {naplTargetItems.map(item => (
-                <Typography key={item.id} variant="caption" component="div" noWrap title={item.id}>
-                  {getNaplItemLabel(item, {
-                    roll: t("naplRollLabel"),
-                    photo: t("naplPhotoLabel"),
-                    unavailable: t("naplRollPhotoUnavailable"),
-                  })}
+          {naplStorageError && <Alert severity="warning">{t("naplValiseStorageError")}</Alert>}
+          {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && naplTargetItems.map(item => naplItemOptions[item.id] && (
+            <Box key={item.id} component="section" aria-labelledby={`napl-entry-${item.id}`}
+              sx={{ minWidth: 0, "& + section": { borderTop: 1, borderColor: "divider", pt: 3 } }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2.5 }}>
+                <Typography id={`napl-entry-${item.id}`} variant="subtitle2" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+                  {item.label}
                 </Typography>
-              ))}
+                <Tooltip title={t("naplValiseDuplicate")}>
+                  <span><IconButton size="small" aria-label={t("naplValiseDuplicate")} disabled={naplSubmitting || naplTargetItems.length >= 100}
+                    onClick={() => setNaplTargetItems(previous => [...previous, { ...item, id: crypto.randomUUID(), options: { ...item.options } }])}>
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton></span>
+                </Tooltip>
+                <Tooltip title={t("naplValiseRemove")}>
+                  <span><IconButton size="small" color="error" aria-label={t("naplValiseRemove")} disabled={naplSubmitting}
+                    onClick={() => { setNaplTargetItems(previous => previous.filter(entry => entry.id !== item.id)); setNaplError(null); }}>
+                    <DeleteOutlinedIcon fontSize="small" />
+                  </IconButton></span>
+                </Tooltip>
+              </Box>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "repeat(2, minmax(0, 1fr))" }, gap: 2.5 }}>
+                <TextField size="small" type="number" fullWidth label={t("naplQuantity")} value={item.quantity} disabled={naplSubmitting}
+                  slotProps={{ htmlInput: { min: 1, max: 2147483647, step: 1, "aria-label": `${t("naplQuantity")}: ${item.label}` } }}
+                  onChange={event => {
+                    const quantity = Number(event.target.value);
+                    if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 2147483647) {
+                      setNaplTargetItems(previous => previous.map(entry => entry.id === item.id ? { ...entry, quantity } : entry));
+                    }
+                  }} />
+                <TextField select size="small" fullWidth label={t("naplMediaType")} disabled={naplSubmitting}
+                  value={naplItemOptions[item.id].media_type} onChange={event => updateNaplItemOptions(item.id, { media_type: event.target.value })}>
+                  {naplOptions.media_types.map(value => <MenuItem key={value} value={value}>{naplMediaLabels[value] ?? value}</MenuItem>)}
+                </TextField>
+                {!!naplOptions.media_type_options[item.options.media_type]?.file_formats.length && (
+                <TextField select size="small" fullWidth label={t("naplFileFormat")}
+                  disabled={naplSubmitting}
+                  slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
+                  value={naplItemOptions[item.id].file_format ?? ""} onChange={event => updateNaplItemOptions(item.id, { file_format: event.target.value })}>
+                  {(naplOptions.media_type_options[item.options.media_type]?.file_formats ?? []).map(value => <MenuItem key={value} value={value}>{value === "ContactPrint" ? t("naplContactPrint") : value === "Enlargement" ? t("naplEnlargement") : value}</MenuItem>)}
+                </TextField>
+                )}
+                {!!naplOptions.media_type_options[item.options.media_type]?.image_resolutions.length && (
+                <TextField select size="small" fullWidth label={t("naplImageResolution")}
+                  disabled={naplSubmitting}
+                  slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
+                  value={naplItemOptions[item.id].image_resolution === undefined ? "" : String(naplItemOptions[item.id].image_resolution)} onChange={event => updateNaplItemOptions(item.id, { image_resolution: Number(event.target.value) })}>
+                  {(naplOptions.media_type_options[item.options.media_type]?.image_resolutions ?? []).map(value => <MenuItem key={value} value={String(value)}>{value}</MenuItem>)}
+                </TextField>
+                )}
+                {naplOptions.flight_line_index_maps.length > 0 && (
+                <TextField select size="small" fullWidth label={t("naplFlightLineIndexMap")}
+                  sx={{ gridColumn: "1 / -1" }} disabled={naplSubmitting}
+                  slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
+                  value={naplItemOptions[item.id].flight_line_index_map ?? ""}
+                  onChange={event => updateNaplItemOptions(item.id, {
+                    flight_line_index_map: event.target.value === "PDF" || event.target.value === "Paper" ? event.target.value : undefined,
+                  })}>
+                  <MenuItem value="">{t("naplMapNotRequested")}</MenuItem>
+                  {naplOptions.flight_line_index_maps.map(value => <MenuItem key={value} value={value}>{value === "Paper" ? t("naplMapPaper") : value}</MenuItem>)}
+                </TextField>
+                )}
+              </Box>
             </Box>
-          </Box>
-          {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && <>
-            <FormControl size="small" fullWidth>
-              <InputLabel id="napl-media-type-label">{t("naplMediaType")}</InputLabel>
-              <Select labelId="napl-media-type-label" label={t("naplMediaType")} value={naplMediaType} onChange={event => setNaplMediaType(event.target.value)}>
-                {naplOptions.media_types.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl size="small" fullWidth>
-              <InputLabel id="napl-file-format-label">{t("naplFileFormat")}</InputLabel>
-              <Select labelId="napl-file-format-label" label={t("naplFileFormat")} value={naplFileFormat} onChange={event => setNaplFileFormat(event.target.value)}>
-                {naplOptions.file_formats.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl size="small" fullWidth>
-              <InputLabel id="napl-image-resolution-label">{t("naplImageResolution")}</InputLabel>
-              <Select labelId="napl-image-resolution-label" label={t("naplImageResolution")} value={naplResolution} onChange={event => setNaplResolution(event.target.value)}>
-                {naplOptions.image_resolutions.map(value => <MenuItem key={value} value={String(value)}>{value}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </>}
+          ))}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNaplDialogOpen(false)} disabled={naplSubmitting}>{t("cancel")}</Button>
-          <Button variant="contained" onClick={() => void handleNaplSubmit()} disabled={naplSubmitting || naplOptionsLoading || !naplOptions || !userId || !authToken || !naplMediaType || !naplFileFormat || !naplResolution}>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Button color="error" startIcon={<DeleteOutlinedIcon />} sx={{ mr: "auto" }}
+            disabled={naplSubmitting || naplOptionsLoading || naplTargetItems.length === 0}
+            onClick={() => { setNaplTargetItems([]); setNaplError(null); }}>
+            {t("naplValiseEmpty")}
+          </Button>
+          <Button onClick={() => setNaplDialogOpen(false)} disabled={naplSubmitting}>{t("naplValiseContinue")}</Button>
+          <Button variant="contained" onClick={() => void handleNaplSubmit()} disabled={naplSubmitting || naplOptionsLoading || !userId || !authToken || !naplSelectionValid}>
             {naplSubmitting ? <CircularProgress size={18} /> : t("naplOrderAction")}
           </Button>
         </DialogActions>
@@ -1441,15 +1538,21 @@ export default function ResultsPanel({
           {naplConfirmation && <>
             <Typography variant="subtitle2">{t("naplOrderSummary")}</Typography>
             {naplConfirmation.orderId && <Typography variant="body2">{t("orderId")}: {naplConfirmation.orderId}</Typography>}
-            <Typography variant="body2">{naplConfirmation.itemLabels.length} {t("itemId")}{naplConfirmation.itemLabels.length === 1 ? "" : "s"}</Typography>
-            <Box sx={{ maxHeight: 128, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
-              {naplConfirmation.itemLabels.map((label, index) => (
-                <Typography key={`${label}-${index}`} variant="caption" component="div" noWrap title={label}>{label}</Typography>
+            <Typography variant="body2">{naplConfirmation.items.length} {t("itemId")}{naplConfirmation.items.length === 1 ? "" : "s"}</Typography>
+            <Typography variant="body2">{t("naplTotalQuantity")}: {naplConfirmation.items.reduce((total, item) => total + item.quantity, 0)}</Typography>
+            <Box sx={{ display: "grid", gap: 1.5 }}>
+              {naplConfirmation.items.map(item => (
+                <Box key={item.id} sx={{ borderTop: 1, borderColor: "divider", pt: 1, overflowWrap: "anywhere" }}>
+                  <Typography variant="subtitle2">{item.label}</Typography>
+                  <Typography variant="body2">{t("naplQuantity")}: {item.quantity}</Typography>
+                  <Typography variant="body2">{t("naplMediaType")}: {naplMediaLabels[item.options.media_type] ?? item.options.media_type}</Typography>
+                  {item.options.file_format !== undefined && <Typography variant="body2">{t("naplFileFormat")}: {item.options.file_format}</Typography>}
+                  {item.options.image_resolution !== undefined && <Typography variant="body2">{t("naplImageResolution")}: {item.options.image_resolution}</Typography>}
+                  <Typography variant="body2">{t("naplFlightLineIndexMap")}: {item.options.flight_line_index_map === "Paper"
+                    ? t("naplMapPaper") : item.options.flight_line_index_map ?? t("naplMapNotRequested")}</Typography>
+                </Box>
               ))}
             </Box>
-            <Typography variant="body2">{t("naplMediaType")}: {naplConfirmation.mediaType}</Typography>
-            <Typography variant="body2">{t("naplFileFormat")}: {naplConfirmation.fileFormat}</Typography>
-            <Typography variant="body2">{t("naplImageResolution")}: {naplConfirmation.imageResolution}</Typography>
             <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: "divider" }}>
               <NaplContactInfo />
             </Box>
