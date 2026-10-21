@@ -24,6 +24,12 @@ if (!configuredDomain) {
 }
 const eodmsDomain = configuredDomain.replace(/\/+$/, '')
 
+const aaaTunnelPort = process.env.EODMS_AAA_TUNNEL_PORT
+if (aaaTunnelPort && (!Number.isInteger(Number(aaaTunnelPort)) || Number(aaaTunnelPort) < 1 || Number(aaaTunnelPort) > 65535)) {
+    throw new Error('EODMS_AAA_TUNNEL_PORT must be a valid TCP port')
+}
+const aaaDomain = aaaTunnelPort ? `http://127.0.0.1:${aaaTunnelPort}` : eodmsDomain
+
 const app = express()
 
 app.use(express.json())
@@ -35,7 +41,7 @@ app.post('/aaa/v1/login', (req, res) => {
 
     // post to AAA endpoint
     axios.post(
-        `${eodmsDomain}/aaa/v1/login`,
+        `${aaaDomain}/aaa/v1/login`,
         req.body
     ).then(response => {
         res.send(response.data) // return the entire response body
@@ -53,9 +59,9 @@ app.get('/aaa/v1/refresh', (req, res) => {
 
     // send to AAA endpoint
     axios.get(
-        `${eodmsDomain}/aaa/v1/refresh`,
+        `${aaaDomain}/aaa/v1/refresh`,
         {
-            headers: {Authorization : req.headers['authorization']}
+            headers: { Authorization: req.headers['authorization'] },
         }
     ).then(response => {
         res.send(response.data) // return the entire response body
@@ -72,8 +78,8 @@ app.get('/aaa/v1/refresh', (req, res) => {
 const proxyUser = (req, res) => {
     axios.request({
         method: req.method,
-        url: `${eodmsDomain}/aaa/v1/users/${encodeURIComponent(req.params.username)}`,
-        headers: {Authorization : req.headers['authorization']},
+        url: `${aaaDomain}/aaa/v1/users/${encodeURIComponent(req.params.username)}`,
+        headers: { Authorization: req.headers['authorization'] },
         data: req.method === 'PATCH' ? req.body : undefined,
     }).then(response => {
         res.status(response.status).send(response.data)

@@ -137,7 +137,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   ].join("\n");
   const proxyEndpointTooltip = [
     t("proxyEndpointTooltip"),
-    `${t("endpointAAA")}: /aaa/v1/* -> ${endpointMap.localAaaProxy}/aaa/v1/* -> ${endpointMap.eodmsDomain}/aaa/v1/*`,
+    `${t("endpointAAA")}: /aaa/v1/* -> ${endpointMap.localAaaProxy}/aaa/v1/* -> ${endpointMap.aaaUpstream}/aaa/v1/*`,
     `${t("endpointSearch")}: /search/* -> ${endpointMap.eodmsDomain}/search/*`,
     `${t("endpointDDS")}: /dds/* -> ${endpointMap.eodmsDomain}/dds/*`,
     `${t("endpointProcessing")}: /processing/* -> ${endpointMap.eodmsDomain}/processing/*`,
@@ -331,6 +331,12 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setDiscovered({ count: 0, hasMore: false });
     searchService.reset();
   }; 
+
+  const cancelSearch = () => {
+    searchRequestId.current += 1;
+    searchService.cancel();
+    setIsSearching(false);
+  };
 
   /**
    * Toggles the visibility of a STAC item's thumbnail image overlay on the map.
@@ -673,7 +679,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={() => searchService.cancel()} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={cancelSearch} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
@@ -721,7 +727,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); handleSearch(locationBbox, false); }} zoomBounds={zoomBounds} 
+            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds}
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} setBbox={setBbox}

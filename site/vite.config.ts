@@ -20,8 +20,12 @@ export default defineConfig(({ mode }) => {
     throw new Error("Set EODMS_STAGING_DOMAIN in site/.env.local for local staging proxies");
   }
   const eodmsDomain = targetEnvironment === "production" ? productionDomain : stagingDomain;
+  const aaaTunnelPort = env.EODMS_AAA_TUNNEL_PORT;
   const endpointMap = {
     localAaaProxy: "http://127.0.0.1:5000",
+    aaaUpstream: aaaTunnelPort
+      ? `http://127.0.0.1:${aaaTunnelPort}`
+      : eodmsDomain,
     eodmsDomain: eodmsDomain || productionDomain,
     productionDomain,
     stagingDomain,

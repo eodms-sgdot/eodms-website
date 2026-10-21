@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useContext, useState } from 'react';
-import { MapContainer, TileLayer, useMap, GeoJSON, Marker } from 'react-leaflet'; 
+import { useEffect, useMemo, useRef, useContext, useState, useCallback } from 'react';
+import { MapContainer, TileLayer, useMap, GeoJSON, Marker, CircleMarker } from 'react-leaflet';
 import L, { LatLng, type LeafletEvent } from 'leaflet';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, GlobalStyles, TextField } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, GlobalStyles, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { pointOnFeature } from '@turf/turf';
 import { AppContext } from '../AppContext';
 import { getHighlightColor } from '../theme';
 import 'leaflet/dist/leaflet.css';
@@ -57,6 +58,45 @@ interface DrawCreatedEvent extends L.LeafletEvent {
   layer: L.Rectangle;
 }
 
+type ResultLayer = 'points' | 'footprints';
+const DENSE_FOOTPRINT_THRESHOLD = 30;
+
+function getRepresentativePosition(item: STACItem): [number, number] | null {
+  if (!item.geometry) return null;
+  const [longitude, latitude] = pointOnFeature(item.geometry).geometry.coordinates;
+  return [latitude, longitude];
+}
+
+function FootprintDensityController({ items, onDensityChange }: {
+  items: STACItem[];
+  onDensityChange: (isDense: boolean) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    let previousDensity: boolean | null = null;
+    const updateDensity = () => {
+      const mapBounds = map.getBounds();
+      const visibleFootprints = items.reduce((count, item) => {
+        if (!item.geometry) return count;
+        const footprintBounds = L.geoJSON(item).getBounds();
+        return footprintBounds.isValid() && mapBounds.intersects(footprintBounds) ? count + 1 : count;
+      }, 0);
+      const isDense = visibleFootprints >= DENSE_FOOTPRINT_THRESHOLD;
+      if (isDense !== previousDensity) {
+        previousDensity = isDense;
+        onDensityChange(isDense);
+      }
+    };
+
+    updateDensity();
+    map.on('moveend', updateDensity);
+    return () => { map.off('moveend', updateDensity); };
+  }, [items, map, onDensityChange]);
+
+  return null;
+}
+
 function parseBbox(bbox?: string | null): [number, number, number, number] | null {
   const coordinates = bbox?.split(',').map(Number);
   if (coordinates?.length !== 4 || !coordinates.every(Number.isFinite)) return null;
@@ -105,8 +145,7 @@ function MapZoomController({ bounds }: { bounds?: [number, number, number, numbe
  * @param {Function} props.onAoiDrawn - Callback to pass the generated BBOX up to the parent.
  * @param {Function} props.setBbox - Callback to clear the BBOX from local storage when it's removed.
  */
-function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox }: { 
-  onAoiDrawn: (bbox: [number, number, number, number]) => void;
+function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox }: { 
   onOpenCoordinateEntry: () => void;
   coordinateEntryLabel: string;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
@@ -166,7 +205,6 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
       const b = event.layer.getBounds();
       const bboxString = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
       setBbox(bboxString);
-      onAoiDrawn([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
     };
     
     const onDrawDeleted = (e: L.LeafletEvent) => {
@@ -186,7 +224,7 @@ function DrawControl({ onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, 
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
     };
-  }, [map, onAoiDrawn, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox]);
+  }, [map, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox]);
   
   return null;
 }
@@ -407,13 +445,24 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
   const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup());
+  const resultLayerControlRef = useRef<HTMLDivElement>(null);
   const { language, locationSearchProvider, baseMapLayer, t } = useContext(AppContext)!; 
+  const [resultLayer, setResultLayer] = useState<ResultLayer>('footprints');
+  const handleDensityChange = useCallback((isDense: boolean) => {
+    if (isDense) setResultLayer('points');
+  }, []);
   const [coordinateDialogOpen, setCoordinateDialogOpen] = useState(false);
   const [coordinateValues, setCoordinateValues] = useState(['', '']);
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
   const coordinateLabels = [t('longitude'), t('latitude')];
-  const initialBounds = parseBbox(initialBbox);
+  const initialBounds = useRef(parseBbox(initialBbox));
+  useEffect(() => {
+    if (resultLayerControlRef.current) {
+      L.DomEvent.disableClickPropagation(resultLayerControlRef.current);
+      L.DomEvent.disableScrollPropagation(resultLayerControlRef.current);
+    }
+  }, []);
   const handleOpenCoordinateEntry = () => {
     setCoordinateValues(['', '']);
     setCoordinateError(false);
@@ -468,12 +517,32 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       )
       }
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
-      <DrawControl onAoiDrawn={onAoiDrawn} onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} initialBbox={initialBbox} setBbox={setBbox}/>
+      <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} initialBbox={initialBbox} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController bounds={zoomBounds} />
       <MapZoomController bounds={coordinateZoomBounds} />
-      <MapZoomController bounds={initialBounds} />
+      <MapZoomController bounds={initialBounds.current} />
+      <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
       <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} label={t('searchHere')} color={brandColor} />
+
+      <div ref={resultLayerControlRef} style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={resultLayer}
+          onChange={(_, next: ResultLayer | null) => { if (next) setResultLayer(next); }}
+          aria-label={t('resultMapLayer')}
+          sx={{
+            bgcolor: 'background.paper',
+            boxShadow: 2,
+            '& .MuiToggleButton-root': { px: 1.25, py: 0.5, textTransform: 'none' },
+            '& .MuiToggleButton-root.Mui-selected': { color: 'primary.main', bgcolor: 'action.selected' },
+          }}
+        >
+          <ToggleButton value="points" aria-label={t('resultPoints')}>{t('resultPoints')}</ToggleButton>
+          <ToggleButton value="footprints" aria-label={t('resultFootprints')}>{t('resultFootprints')}</ToggleButton>
+        </ToggleButtonGroup>
+      </div>
 
       <Dialog open={coordinateDialogOpen} onClose={() => setCoordinateDialogOpen(false)}>
         <DialogTitle>{t('coordinateEntry')}</DialogTitle>
@@ -500,7 +569,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
         </DialogActions>
       </Dialog>
 
-      {searchResults.map((item, index) => {
+      {resultLayer === 'footprints' && searchResults.map((item, index) => {
         const isSelected = selectedFootprints.has(item.id);
         const isHovered = item.id === hoveredItem;
         const color = isSelected ? highlightColor : brandColor;
@@ -530,7 +599,34 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
         );
       })}
 
-      {searchResults.map((item, index) => {
+      {resultLayer === 'points' && searchResults.map((item) => {
+        const position = getRepresentativePosition(item);
+        if (!position) return null;
+        const isSelected = selectedFootprints.has(item.id);
+        const isHovered = item.id === hoveredItem;
+        const color = isSelected ? highlightColor : brandColor;
+        return (
+          <CircleMarker
+            key={`point-${item.id}`}
+            center={position}
+            radius={isSelected || isHovered ? 7 : 5}
+            pathOptions={{
+              color,
+              weight: isSelected || isHovered ? 2 : 1,
+              opacity: 1,
+              fillColor: color,
+              fillOpacity: isSelected || isHovered ? 1 : 0.75,
+            }}
+            eventHandlers={{
+              click: (event) => { L.DomEvent.stopPropagation(event); onFeatureClick?.(item.id); },
+              mouseover: () => onHoverItem?.(item.id),
+              mouseout: () => onHoverItem?.(null),
+            }}
+          />
+        );
+      })}
+
+      {resultLayer === 'footprints' && searchResults.map((item, index) => {
         const isSelected = selectedFootprints.has(item.id);
         if ((!isSelected && item.id !== hoveredItem) || !item.geometry) return null;
         const color = isSelected ? highlightColor : brandColor;
