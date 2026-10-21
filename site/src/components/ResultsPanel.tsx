@@ -40,6 +40,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
 import CloseIcon from "@mui/icons-material/Close";
+import ZoomOutMapIcon from "@mui/icons-material/ZoomOutMap";
 import type { STACItem } from "../types";
 import { AppContext } from "../AppContext";
 import { getHighlightColor } from "../theme";
@@ -188,6 +189,8 @@ interface ResultsPanelProps {
   onClose: () => void;
   /** Callback fired to zoom the map to a specific item's bounds */
   onZoom: (item: STACItem) => void;
+  /** Callback fired to zoom the map to all results on the current page */
+  onZoomToResults: () => void;
   onProcessCart: () => void;
   /** Boolean indicating if a network request is currently active */
   isSearching: boolean;
@@ -249,6 +252,7 @@ export default function ResultsPanel({
   loadedResults,
   onClose,
   onZoom,
+  onZoomToResults,
   onProcessCart,
   isSearching,
   selectedFootprints,
@@ -1418,8 +1422,15 @@ export default function ResultsPanel({
           </Tooltip>
           </Box>}
           <Box sx={{ ml: "auto", mr: 1, display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
-            <ButtonGroup size="small" variant="outlined" aria-label={`${t("exportResults")}, ${t("columns")}`}
+            <ButtonGroup size="small" variant="outlined" aria-label={`${t("zoomToResultExtents")}, ${t("exportResults")}, ${t("columns")}`}
               sx={{ "& .MuiButtonGroup-grouped": { minWidth: 34, p: 0.5 } }}>
+              <Tooltip title={t("zoomToResultExtents")}>
+                <span>
+                  <Button aria-label={t("zoomToResultExtents")} disabled={results.length === 0} onClick={onZoomToResults}>
+                    <ZoomOutMapIcon fontSize="small" />
+                  </Button>
+                </span>
+              </Tooltip>
               <Tooltip title={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}>
                 <span>
                   <Button aria-label={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}

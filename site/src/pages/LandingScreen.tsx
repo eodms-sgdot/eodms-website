@@ -310,6 +310,13 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setZoomBounds(getItemsExtent([item]));
   }
 
+  const handleZoomToResults = () => {
+    const extent = getItemsExtent(searchResults);
+    if (!extent) return;
+    if (isMobile) setRightOpen(false);
+    setZoomBounds(extent);
+  };
+
   /**
    * Clears the current results as well as the current AOI. 
    */
@@ -746,7 +753,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           </Box>
           <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <ResultsPanel 
-              results={searchResults} loadedResults={loadedResults} onClose={() => setRightOpen(false)} onZoom={handleZoom}
+              results={searchResults} loadedResults={loadedResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} onZoomToResults={handleZoomToResults}
               onProcessCart={() => { setOpenBlind('processing'); setIsAuthOpen(false); }}
               isSearching={isSearching} selectedFootprints={selectedFootprints}
               onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
