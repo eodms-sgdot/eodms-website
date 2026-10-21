@@ -111,7 +111,11 @@ export default function App() {
   const [refreshExpiry, setRefreshExpiry] = useState<string | null>(() => localStorage.getItem(fields.refreshExpiry));
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
-  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem(fields.language) as Language) ?? 'en');
+  const [language, setLanguage] = useState<Language>(() => {
+    const requestedLanguage = new URLSearchParams(window.location.search).get('lang');
+    if (requestedLanguage === 'en' || requestedLanguage === 'fr') return requestedLanguage;
+    return localStorage.getItem(fields.language) === 'fr' ? 'fr' : 'en';
+  });
   const [baseMapId, setBaseMapId] = useState<BaseMapId>(() => {
     const savedBaseMapId = localStorage.getItem(fields.baseMap) as BaseMapId;
     return getBaseMap(savedBaseMapId)?.name ?? 'osm';
