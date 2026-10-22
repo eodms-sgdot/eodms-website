@@ -48,6 +48,11 @@ Git; update `.env.example` when adding configuration variables. Staging builds
 and deployments use the relative `/napl/v1` URL directly and do not need the
 local proxy or domain variables.
 
+The NAPL experience is enabled for staging builds and disabled when
+`EODMS_TARGET_ENV=production`. Set `VITE_ENABLE_NAPL_EXPERIENCE=true` only when
+you need to expose it in a production build for testing; `/napl` otherwise
+redirects to the main experience.
+
 The app automatically shows the `PROXY` badge when running through the local
 Vite development server. No environment setting is needed.
 

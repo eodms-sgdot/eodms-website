@@ -322,7 +322,9 @@ export default function App() {
           <DocumentTitle language={language} />
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
-            <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
+            {import.meta.env.VITE_ENABLE_NAPL_EXPERIENCE && (
+              <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
+            )}
             <Route path="/animations" element={<AnimationsScreen />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
