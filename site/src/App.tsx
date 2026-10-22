@@ -9,6 +9,7 @@ import AnimationsScreen from './pages/AnimationsScreen';
 import type { FilterValue } from './types';
 import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
+import { isStagingEndpoint } from './utils/StagingUtils';
 import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { eodmsExperience, naplExperience } from './experiences';
@@ -105,6 +106,7 @@ export default function App() {
   const [bbox, setBbox] = useState<string | null>(() => localStorage.getItem(fields.bbox));
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(fields.username));
   const [stacEndpoint, setStacEndpoint] = useState(() => getInitialStacEndpoint(initialEndpoint));
+  const showStagingBadge = isStagingEndpoint(stacEndpoint, import.meta.env.DEV, import.meta.env.VITE_EODMS_ENDPOINTS);
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem(fields.token));
   const [authExpiry, setAuthExpiry] = useState<string | null>(() => localStorage.getItem(fields.expiry));
   const [refreshToken, setRefreshToken] = useState<string | null>(() => localStorage.getItem(fields.refreshToken));
@@ -322,9 +324,9 @@ export default function App() {
           <DocumentTitle language={language} />
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
-            {import.meta.env.VITE_ENABLE_NAPL_EXPERIENCE && (
-              <Route path="/napl" element={<LandingScreen experience={naplExperience} />} />
-            )}
+            <Route path="/napl" element={showStagingBadge
+              ? <LandingScreen experience={naplExperience} />
+              : <Navigate to="/" replace />} />
             <Route path="/animations" element={<AnimationsScreen />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

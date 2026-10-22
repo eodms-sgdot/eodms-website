@@ -14,7 +14,7 @@ import ResultsPanel from '../components/ResultsPanel';
 import AuthPanel from '../components/AuthPanel';
 import TermsOfUseDialog from '../components/TermsOfUseDialog';
 import type { STACCollection, STACItem } from '../types';
-import { createDateRange, formatStacDate } from '../utils/DateUtils';
+import { createDateRange, formatDateTimeLocalAsStac } from '../utils/DateUtils';
 import { buildFilter } from '../utils/FilterBuilder';
 import LoadingMask from '../components/masker/LoadingMask';
 import { StacSearchService } from '../services/StacSearchService';
@@ -37,6 +37,7 @@ import LoaderCycle from '../components/LoaderCycle';
 import { NAPL_SEARCH_LOADERS, SEARCH_LOADERS } from '../components/searchLoaderList';
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
+import { isStagingEndpoint } from '../utils/StagingUtils';
 
 const DRAWER_WIDTH = 320;
 // Matches useIsMobile's default so the first render agrees with it.
@@ -118,9 +119,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     ? new URL(stacEndpoint).origin
     : import.meta.env.DEV ? endpointMap.eodmsDomain : window.location.origin;
   const activeApiOrigin = import.meta.env.DEV ? endpointMap.eodmsDomain : activeStacOrigin;
-  const productionHostname = new URL(endpointMap.productionDomain).hostname.toLowerCase().replace(/^www\./, "");
-  const activeStacHostname = new URL(activeStacOrigin, window.location.origin).hostname.toLowerCase().replace(/^www\./, "");
-  const showStagingBadge = activeStacHostname !== productionHostname;
+  const showStagingBadge = isStagingEndpoint(stacEndpoint, import.meta.env.DEV, endpointMap);
   const effectiveSearchEndpoint = directStacEndpoint
     ? stacEndpoint
     : `${activeStacOrigin}${stacEndpoint.startsWith("/") ? "" : "/"}${stacEndpoint}`;
@@ -414,10 +413,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       let startStr = "..", endStr = "..";
       if (searchTemporal === "custom") {
         if (searchStartDate) {
-          startStr = formatStacDate(new Date(`${searchStartDate}Z`));
+          startStr = formatDateTimeLocalAsStac(searchStartDate);
         }
         if (searchEndDate) {
-          endStr = formatStacDate(new Date(`${searchEndDate}Z`));
+          endStr = formatDateTimeLocalAsStac(searchEndDate);
         }
 
       } else {
@@ -550,41 +549,45 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 0 }}>
             <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
           </Typography>
-          {(showStagingBadge || import.meta.env.DEV) && (
-            <Box sx={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: { xs: 0.75, sm: 1.25 },
-              rowGap: 0.75,
-              ml: { xs: 1, sm: 2 },
-              minWidth: 0,
-              maxWidth: { xs: 150, sm: 'min(38vw, 420px)' },
-            }}>
-              {showStagingBadge && (
-                <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
-                  <Chip
-                    icon={<ScienceIcon fontSize="small" />}
-                    label="STAGING"
-                    size="small"
-                    color="warning"
-                    sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
-                  />
-                </Tooltip>
-              )}
-              {import.meta.env.DEV && (
-                <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
-                  <Chip
-                    icon={<RouteIcon fontSize="small" />}
-                    label="PROXY"
-                    size="small"
-                    color="info"
-                    sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
-                  />
-                </Tooltip>
-              )}
-            </Box>
-          )}
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: { xs: 0.75, sm: 1.25 },
+            rowGap: 0.75,
+            ml: { xs: 1, sm: 2 },
+            minWidth: 0,
+            maxWidth: { xs: 150, sm: 'min(38vw, 420px)' },
+          }}>
+            <Chip
+              label="BETA"
+              size="small"
+              color="secondary"
+              sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+            />
+            {showStagingBadge && (
+              <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
+                <Chip
+                  icon={<ScienceIcon fontSize="small" />}
+                  label="STAGING"
+                  size="small"
+                  color="warning"
+                  sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+                />
+              </Tooltip>
+            )}
+            {import.meta.env.DEV && (
+              <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
+                <Chip
+                  icon={<RouteIcon fontSize="small" />}
+                  label="PROXY"
+                  size="small"
+                  color="info"
+                  sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+                />
+              </Tooltip>
+            )}
+          </Box>
 
           {/* empty to make widgets below align right */}
           <Box sx={{ flexGrow: 1 }}></Box>
@@ -734,7 +737,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds}
+            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} setBbox={setBbox}

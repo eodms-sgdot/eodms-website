@@ -19,9 +19,6 @@ export default defineConfig(({ mode }) => {
   if (mode === "development" && targetEnvironment === "staging" && !stagingDomain) {
     throw new Error("Set EODMS_STAGING_DOMAIN in site/.env.local for local staging proxies");
   }
-  const enableNaplExperience = env.VITE_ENABLE_NAPL_EXPERIENCE === undefined
-    ? targetEnvironment !== "production"
-    : env.VITE_ENABLE_NAPL_EXPERIENCE.toLowerCase() === "true";
   const eodmsDomain = targetEnvironment === "production" ? productionDomain : stagingDomain;
   const aaaTunnelPort = env.EODMS_AAA_TUNNEL_PORT;
   const endpointMap = {
@@ -47,7 +44,6 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
       "import.meta.env.VITE_BUILD_ID": JSON.stringify(buildId),
-      "import.meta.env.VITE_ENABLE_NAPL_EXPERIENCE": JSON.stringify(enableNaplExperience),
       "import.meta.env.VITE_EODMS_ENDPOINTS": JSON.stringify(endpointMap),
     },
     server: {

@@ -27,11 +27,13 @@ window.L = L;
  */
 interface StacMapProps {
   /** Callback fired when a user successfully draws a rectangle on the map. Returns [W, S, E, N] */
-  onAoiDrawn: (bbox: [number, number, number, number]) => void;
+  onAoiDrawn: (bbox: [number, number, number, number], zoomToResults?: boolean) => void;
   /** Callback fired when a user selects a search result from GeoSearch */
   onLocationSelected: (bbox: [number, number, number, number]) => void;
   /** Bounding box coordinates used to programmatically animate and zoom the map */
   zoomBounds?: [number, number, number, number] | null;
+  /** Zoom the map to the currently loaded search results */
+  onZoomToResults: () => void;
   /** Array of STAC features retrieved from the search */
   searchResults?: STACItem[];
   /** Dictionary mapping STAC Item IDs to their assigned highlight color string */
@@ -229,13 +231,34 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
   return null;
 }
 
-const POINT_BUFFER_DEG = 0.1;
+const POINT_SEARCH_HALF_SIZE_METERS = 5;
+const METERS_PER_DEGREE = 111_320;
+
+function createPointSearchBbox(longitude: number, latitude: number): [number, number, number, number] {
+  const latitudeDelta = POINT_SEARCH_HALF_SIZE_METERS / METERS_PER_DEGREE;
+  const lat = Math.min(90 - latitudeDelta, Math.max(-90 + latitudeDelta, latitude));
+  const longitudeMetersPerDegree = METERS_PER_DEGREE * Math.cos(lat * Math.PI / 180);
+  const longitudeDelta = POINT_SEARCH_HALF_SIZE_METERS / longitudeMetersPerDegree;
+  const lon = Math.min(180 - longitudeDelta, Math.max(-180 + longitudeDelta, longitude));
+
+  return [
+    Number((lon - longitudeDelta).toFixed(10)),
+    Number((lat - latitudeDelta).toFixed(10)),
+    Number((lon + longitudeDelta).toFixed(10)),
+    Number((lat + latitudeDelta).toFixed(10)),
+  ];
+}
 
 /**
  * Drops a crosshair with a "Search here" chip wherever the user clicks on empty map.
  * Ignores clicks that finish a draw, edit or delete gesture.
  */
-function ClickToSearch({ onSearchHere, label, color }: { onSearchHere: (longitude: number, latitude: number) => void; label: string; color: string }) {
+function ClickToSearch({ onSearchHere, onCandidateSelected, label, color }: {
+  onSearchHere: (longitude: number, latitude: number) => void;
+  onCandidateSelected: (longitude: number, latitude: number) => void;
+  label: string;
+  color: string;
+}) {
   const map = useMap();
   const [point, setPoint] = useState<LatLng | null>(null);
 
@@ -256,7 +279,11 @@ function ClickToSearch({ onSearchHere, label, color }: { onSearchHere: (longitud
     const onToolStop = () => { toolActive = false; toolStoppedAt = Date.now(); };
     // The click that ends a rectangle drag arrives just after draw:drawstop.
     const onClick = (e: L.LeafletMouseEvent) => {
-      if (!toolActive && Date.now() - toolStoppedAt > 300) setPoint(e.latlng.wrap());
+      if (!toolActive && Date.now() - toolStoppedAt > 300) {
+        const candidate = e.latlng.wrap();
+        setPoint(candidate);
+        onCandidateSelected(candidate.lng, candidate.lat);
+      }
     };
     const onKeyDown = (e: L.LeafletKeyboardEvent) => {
       if (e.originalEvent.key === 'Escape') setPoint(null);
@@ -274,7 +301,7 @@ function ClickToSearch({ onSearchHere, label, color }: { onSearchHere: (longitud
       map.off('click', onClick);
       map.off('keydown', onKeyDown);
     };
-  }, [map]);
+  }, [map, onCandidateSelected]);
 
   if (!point) return null;
   return (
@@ -440,7 +467,7 @@ const footprintStyles = (
   }} />
 );
 
-export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox }: StacMapProps) {
+export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox }: StacMapProps) {
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
@@ -471,8 +498,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
   const handleCoordinateSubmit = () => {
     const coordinates = coordinateValues.map(value => value.trim() === '' ? NaN : Number(value));
     const [longitude, latitude] = coordinates;
-    const buffer = POINT_BUFFER_DEG;
-    if (!coordinates.every(Number.isFinite) || longitude < -180 + buffer || longitude > 180 - buffer || latitude < -90 + buffer || latitude > 90 - buffer) {
+    if (!coordinates.every(Number.isFinite) || longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
       setCoordinateError(true);
       return;
     }
@@ -481,23 +507,23 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
     searchAroundPoint(longitude, latitude, true);
   };
 
-  const searchAroundPoint = (longitude: number, latitude: number, zoom: boolean) => {
-    const buffer = POINT_BUFFER_DEG;
-    const clamp = (value: number, limit: number) => Math.min(Math.max(value, -limit + buffer), limit - buffer);
-    const lon = clamp(longitude, 180);
-    const lat = clamp(latitude, 90);
-    const bbox: [number, number, number, number] = [
-      Number((lon - buffer).toFixed(10)),
-      Number((lat - buffer).toFixed(10)),
-      Number((lon + buffer).toFixed(10)),
-      Number((lat + buffer).toFixed(10)),
-    ];
+  const replacePointAoi = useCallback((bbox: [number, number, number, number]) => {
     const rectangle = L.rectangle([[bbox[1], bbox[0]], [bbox[3], bbox[2]]]);
     drawnItemsRef.current?.clearLayers();
+    setBbox(null);
     drawnItemsRef.current?.addLayer(rectangle);
     setBbox(bbox.join(','));
+  }, [setBbox]);
+
+  const handleCandidateSelected = useCallback((longitude: number, latitude: number) => {
+    replacePointAoi(createPointSearchBbox(longitude, latitude));
+  }, [replacePointAoi]);
+
+  const searchAroundPoint = (longitude: number, latitude: number, zoom: boolean) => {
+    const bbox = createPointSearchBbox(longitude, latitude);
+    replacePointAoi(bbox);
     if (zoom) setCoordinateZoomBounds(bbox);
-    onAoiDrawn(bbox);
+    onAoiDrawn(bbox, true);
   };
   
   return (
@@ -523,14 +549,19 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, se
       <MapZoomController bounds={coordinateZoomBounds} />
       <MapZoomController bounds={initialBounds.current} />
       <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
-      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} label={t('searchHere')} color={brandColor} />
+      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCandidateSelected={handleCandidateSelected} label={t('searchHere')} color={brandColor} />
 
       <div ref={resultLayerControlRef} style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
         <ToggleButtonGroup
           exclusive
           size="small"
           value={resultLayer}
-          onChange={(_, next: ResultLayer | null) => { if (next) setResultLayer(next); }}
+          onChange={(_, next: ResultLayer | null) => {
+            if (next) {
+              setResultLayer(next);
+              onZoomToResults();
+            }
+          }}
           aria-label={t('resultMapLayer')}
           sx={{
             bgcolor: 'background.paper',

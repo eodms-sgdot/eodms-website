@@ -8,6 +8,14 @@ export const formatStacDate = (date: Date): string => {
     return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 };
 
+export const formatDateTimeLocalAsStac = (value: string): string =>
+    formatStacDate(new Date(value));
+
+export const formatStacDateAsLocalInput = (date: Date): string => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 /**
  * Creates a date range starting a number of days in the past until now
  * @param daysToGoBack The number of days ago to set the startDate
@@ -16,8 +24,7 @@ export const formatStacDate = (date: Date): string => {
 export const createDateRange = (daysToGoBack: string): string[] => {
     const days = parseInt(daysToGoBack, 10);
     const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - days);
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
     const startStr = formatStacDate(start);
     const endStr = formatStacDate(end);
 
