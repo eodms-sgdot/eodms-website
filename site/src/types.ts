@@ -24,6 +24,9 @@ export interface STACCollection {
   title?: string;
   description: string;
   links: { rel: string; href: string, type: string }[];
+  keywords?: string[];
+  summaries?: Record<string, unknown>;
+  stac_extensions?: string[];
   extent?: {
     temporal?: {
       interval?: Array<[string | null, string | null]>;

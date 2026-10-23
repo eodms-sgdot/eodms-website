@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar } from '@mui/material';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar, Chip } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -14,6 +14,7 @@ import Blind from './Blind';
 import SearchIcon from '@mui/icons-material/Search';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import NaplWelcome from './NaplWelcome';
+import { getCollectionTags } from '../utils/CollectionTags';
 
 /**
  * Properties for the SearchPanel component.
@@ -387,6 +388,7 @@ export default function SearchPanel({
         >
           <FormGroup>
             {collections.map((c) => {
+              const tags = getCollectionTags(c);
               const dateRange = getCollectionDateRange(c, t);
               const timelineSegments = timelineScale ? getCollectionTimelineSegments(c, timelineScale) : [];
               return <Tooltip key={c.id} title={c.description || c.title || c.id}>
@@ -411,7 +413,7 @@ export default function SearchPanel({
                       <Typography component="span" variant="body2" title={c.title || c.id} sx={{ display: 'block' }}>
                         {c.title || c.id}
                       </Typography>
-                      {(timelineSegments.length > 0 || dateRange) && (
+                      {(timelineSegments.length > 0 || dateRange || tags.length > 0) && (
                         <Box sx={{ mt: 0.35, mb: 0.25 }}>
                           {timelineSegments.length > 0 && (
                             <Box
@@ -434,7 +436,19 @@ export default function SearchPanel({
                           ))}
                             </Box>
                           )}
-                          {dateRange && <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.2, color: 'text.disabled' }}>{dateRange}</Typography>}
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1, rowGap: 0.5, mt: 0.25 }}>
+                            {dateRange && <Typography variant="caption" sx={{ lineHeight: 1.2, color: 'text.disabled' }}>{dateRange}</Typography>}
+                            {tags.length > 0 && (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, ml: 'auto' }}>
+                                {tags.map(tag => (
+                                  <Chip key={tag} component="span" size="small" variant="outlined"
+                                    label={tag === 'ceosArd' ? 'CEOS-ARD' : tag === 'sar' ? 'SAR' : t(tag === 'aerial' ? 'collectionAerial' : 'collectionOptical')}
+                                    color={tag === 'sar' ? 'info' : tag === 'aerial' ? 'warning' : tag === 'optical' ? 'success' : 'default'}
+                                    sx={{ height: 18, fontSize: '0.625rem', borderRadius: '9px', '& .MuiChip-label': { px: 0.75 } }} />
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
                         </Box>
                       )}
                     </Box>
