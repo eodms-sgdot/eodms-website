@@ -43,6 +43,7 @@ import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 import { isStagingEndpoint } from '../utils/StagingUtils';
 import { fields } from '../session';
+import { AoiImportError, buildAoiSpatialFilter, type AoiGeometry } from '../utils/GeoJsonAoi';
 
 const DRAWER_WIDTH = 320;
 const MIN_RESULTS_WIDTH = 320;
@@ -101,6 +102,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [isSearching, setIsSearching] = useState(false);
   const [searchAnimation, setSearchAnimation] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [aoiGeometry, setAoiGeometry] = useState<AoiGeometry | null>(null);
+  const replaceBboxAoi = (value: string | null) => {
+    setAoiGeometry(null);
+    setBbox(value);
+  };
+  const handleAoiImported = (geometry: AoiGeometry, bounds: [number, number, number, number]) => {
+    setAoiGeometry(geometry);
+    setBbox(bounds.join(','));
+  };
   const searchRequestId = useRef(0);
   const geometryValidityCollections = useRef(new Set<string>());
 
@@ -397,7 +407,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setActiveThumbnails({});
     setFocusedItem(null);
     setClearAoiTrigger(prev => prev + 1); // increment to trigger AOI clear effect. 
-    setBbox(null);
+    replaceBboxAoi(null);
     console.log(pagingState);
     setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
     setNumberMatched(null);
@@ -458,7 +468,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * * @async
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
-  const prepareSearch = async (searchBbox?: [number, number, number, number]) => {
+  const prepareSearch = async (searchBbox?: [number, number, number, number], searchGeometry?: AoiGeometry) => {
     const collectionIDs = experience.fixedCollectionId
       ? [experience.fixedCollectionId]
       : selectedCollections.map(collection => collection.id);
@@ -468,7 +478,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
 
     const params: StacSearchParams = {
-      ...(searchBbox && { bbox: searchBbox }),
+      ...(!searchGeometry && searchBbox && { bbox: searchBbox }),
       collections: collectionIDs,
       limit: searchLimit,
       ...(selectedCollections.length <= 1 && {sortby}),
@@ -513,17 +523,18 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         hasGeometryValidityQueryable(queryablesByCollection[index]),
       );
       const geometryValidityFilter = buildGeometryValidityFilter(queryablesByCollection);
-      const filtersText = [userFiltersText, geometryValidityFilter].filter(Boolean).join(' AND ');
+      const spatialFilter = searchGeometry ? buildAoiSpatialFilter(searchGeometry) : '';
+      const filtersText = [userFiltersText && `(${userFiltersText})`, geometryValidityFilter, spatialFilter].filter(Boolean).join(' AND ');
       if (filtersText) params.filter = filtersText;
       return { params, geometryValidityCollectionIds };
   };
 
-  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true) => {
+  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true, searchGeometry?: AoiGeometry) => {
     let prepared;
     try {
-      prepared = await prepareSearch(searchBbox);
+      prepared = await prepareSearch(searchBbox, searchGeometry);
     } catch (error) {
-      setSearchError(error instanceof DateSearchError ? t(error.translationKey) : t('errorFetch'));
+      setSearchError(error instanceof DateSearchError || error instanceof AoiImportError ? t(error.translationKey) : t('errorFetch'));
       return;
     }
     if (!prepared) {
@@ -572,15 +583,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   };
 
   const searchWithCurrentAoi = () => {
-    void handleSearch(getCurrentSearchBbox());
+    void handleSearch(getCurrentSearchBbox(), true, aoiGeometry ?? undefined);
   };
 
   const getCurrentSearchUrl = async () => {
     let prepared;
     try {
-      prepared = await prepareSearch(getCurrentSearchBbox());
+      prepared = await prepareSearch(getCurrentSearchBbox(), aoiGeometry ?? undefined);
     } catch (error) {
-      throw new Error(error instanceof DateSearchError ? t(error.translationKey) : t('errorFetch'));
+      throw new Error(error instanceof DateSearchError || error instanceof AoiImportError ? t(error.translationKey) : t('errorFetch'), { cause: error });
     }
     if (!prepared) throw new Error(t('errorSelectCollection'));
     return searchService.getSearchUrl(prepared.params);
@@ -858,10 +869,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
+            <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} aoiGeometry={aoiGeometry} onAoiImported={handleAoiImported} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { replaceBboxAoi(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} focusedItem={focusedItem}
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem}
-              activeThumbnails={activeThumbnails} setBbox={setBbox}
+              activeThumbnails={activeThumbnails} setBbox={replaceBboxAoi}
             />
             {isMobile && !leftOpen && !rightOpen && (
               <Fab

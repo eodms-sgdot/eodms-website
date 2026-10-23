@@ -87,6 +87,45 @@ can repeat an item ID. Numbered labels retain their result-list positions and
 are removed on deselection or when switching to Points mode, without leaving
 stale markers behind.
 
+## GeoJSON Areas of Interest
+
+The map's import button reads `.geojson` or `.json` files entirely in the browser.
+It accepts all seven WGS84 longitude/latitude GeoJSON geometry types: Point,
+MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, and
+GeometryCollection, including Features and mixed FeatureCollections. It preserves
+polygon holes and dissolves overlapping polygons in polygon-only collections.
+The import replaces the current AOI and fits the map to the result.
+Importing does not execute a search. Imported AOIs support the existing edit and
+delete controls and survive basemap projection changes.
+
+Search and Copy Search URL use CQL2 `S_INTERSECTS(geometry, <WKT>)` predicates for
+the actual imported geometry, not its bounding box. Multiple parts are joined
+with a parenthesized `OR`: results may intersect any imported point, line, or
+polygon. The API rejects GeometryCollection WKT literals, so these are expanded
+into individual predicates. Imported points and lines are not buffered.
+Selecting a location or drawing
+a rectangle replaces the imported AOI with the existing bounding-box workflow.
+Only the geometry is sent when searching; the source file and its properties are
+not uploaded. Imported AOIs are session-only and are not saved across page reloads.
+
+Files are limited to 2 MiB and 500 input positions in total across all features,
+including polygon holes and repeated ring-closing coordinates. Nested geometry
+collections are limited to 16 levels. The 500-position cap is a conservative
+starting point for main-thread topology checks and Leaflet editing, not a
+guarantee of a particular device's performance. A separate 6,000-character limit
+on the URL-encoded spatial filter applies because searches currently use GET URLs;
+high-precision coordinates or many separate parts can reach it before 500 positions.
+Detailed
+geometries must be simplified before import; there is no silent simplification.
+Malformed JSON, unsupported geometry, explicit CRS declarations, invalid
+coordinates, open or self-intersecting rings, and invalid holes are rejected
+without replacing the active AOI. Export older or projected datasets as RFC 7946
+GeoJSON first. Empty/null geometries, KML, shapefiles, GeoPackage, and reprojection
+are not included. The mixed example is available at
+`public/examples/ottawa-all-geometries.geojson`.
+
+Run `node --test tests/GeoJsonAoi.test.ts` for import-validation regression tests.
+
 ## Flexible Date Searches
 
 The custom date range uses React Aria's segmented date/time fields. Enter a

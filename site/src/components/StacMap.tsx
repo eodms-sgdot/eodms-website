@@ -20,6 +20,8 @@ import type { SearchResult } from 'leaflet-geosearch/dist/providers/provider.js'
 import { GeolocatorProvider } from './providers/GeolocatorProvider';
 import { VectorTileLayer } from './layer/VectorTileLayer';
 import { getBaseMapAttribution, type BaseMap } from "../basemaps";
+import GeoJsonAoiImportControl from './GeoJsonAoiImportControl';
+import { AoiImportError, getAoiParts, parseGeoJsonAoi, type AoiGeometry } from '../utils/GeoJsonAoi';
 
 declare global { interface Window { L: typeof L; } }
 window.L = L;
@@ -77,6 +79,8 @@ interface StacMapProps {
   setBbox: (bbox: string | null) => void;
   /** Active AOI in the current app session */
   aoiBbox?: string | null;
+  aoiGeometry?: AoiGeometry | null;
+  onAoiImported: (geometry: AoiGeometry, bounds: [number, number, number, number]) => void;
 }
 
 interface DrawCreatedEvent extends L.LeafletEvent {
@@ -254,21 +258,37 @@ function MapZoomController({ basemap, bounds, coordinateBounds, previousRequestR
  * @param {Function} props.onAoiDrawn - Callback to pass the generated BBOX up to the parent.
  * @param {Function} props.setBbox - Callback to clear the active AOI when it's removed.
  */
-function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, setBbox }: {
+function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, aoiGeometry, onAoiImported, setBbox }: {
   onOpenCoordinateEntry: () => void;
   coordinateEntryLabel: string;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
   aoiBbox?: string | null;
+  aoiGeometry?: AoiGeometry | null;
+  onAoiImported: StacMapProps['onAoiImported'];
   setBbox: (bbox: string | null) => void;
 }) {
   const map = useMap();
+  const { t } = useContext(AppContext)!;
+  const [aoiError, setAoiError] = useState<string | null>(null);
+  const [importContainer, setImportContainer] = useState<HTMLElement | null>(null);
   
   useEffect(() => {
     const drawnItems = drawnItemsRef.current;
     map.addLayer(drawnItems);
 
     const coordinates = parseBbox(aoiBbox);
-    if (drawnItems.getLayers().length === 0 && coordinates) {
+    const restoreImportedAoi = () => {
+      if (!aoiGeometry) return;
+      drawnItems.clearLayers();
+      for (const geometry of getAoiParts(aoiGeometry)) {
+        L.geoJSON(geometry, {
+          pointToLayer: (_, latlng) => L.circleMarker(latlng, { radius: 6, weight: 2, fillOpacity: 0.7 }),
+        }).eachLayer(layer => drawnItems.addLayer(layer));
+      }
+    };
+    if (aoiGeometry) {
+      restoreImportedAoi();
+    } else if (drawnItems.getLayers().length === 0 && coordinates) {
       const [west, south, east, north] = coordinates;
       drawnItems.addLayer(L.rectangle([[south, west], [north, east]]));
     }
@@ -279,9 +299,23 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     });
     
     map.addControl(drawControl);
+    const controlContainer = drawControl.getContainer();
+    if (controlContainer) {
+      controlContainer.classList.add('stac-aoi-control', 'leaflet-bar');
+      controlContainer.querySelectorAll('.leaflet-draw-toolbar').forEach(toolbar => toolbar.classList.remove('leaflet-bar'));
+      const uploadSlot = L.DomUtil.create('div', 'stac-aoi-import-slot');
+      controlContainer.prepend(uploadSlot);
+      setImportContainer(uploadSlot);
+    }
     const deleteButton = drawControl.getContainer()?.querySelector<HTMLAnchorElement>('.leaflet-draw-edit-remove');
     const updateDeleteButtonState = () => {
-      deleteButton?.classList.toggle('stac-delete-available', drawnItems.getLayers().length > 0);
+      if (!deleteButton) return;
+      const count = drawnItems.getLayers().length;
+      deleteButton.classList.toggle('stac-delete-available', count > 0);
+      deleteButton.dataset.geometryCount = String(count);
+      const label = t('deleteAoiGeometries').replace('{count}', String(count));
+      deleteButton.title = label;
+      deleteButton.setAttribute('aria-label', label);
     };
     drawnItems.on('layeradd layerremove', updateDeleteButtonState);
     updateDeleteButtonState();
@@ -318,24 +352,51 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     
     const onDrawDeleted = (e: L.LeafletEvent) => {
       const event = e as DrawCreatedEvent;
-      
+      if (aoiGeometry && drawnItems.getLayers().length > 0) {
+        onDrawEdited();
+        return;
+      }
       if(event && setBbox) {
         setBbox(null);
       }
     };
 
+    const onDrawEdited = () => {
+      if (drawnItems.getLayers().length === 0) return;
+      if (aoiGeometry) {
+        try {
+          const geometry = parseGeoJsonAoi(JSON.stringify(drawnItems.toGeoJSON()));
+          const bounds = drawnItems.getBounds();
+          onAoiImported(geometry, [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+          setAoiError(null);
+        } catch (error) {
+          restoreImportedAoi();
+          setAoiError(t(error instanceof AoiImportError ? error.translationKey : 'aoiInvalidPolygon'));
+        }
+      } else {
+        const bounds = drawnItems.getBounds();
+        setBbox([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(','));
+      }
+    };
+
     map.on(L.Draw.Event.CREATED, onDrawCreated);
     map.on(L.Draw.Event.DELETED, onDrawDeleted);
+    map.on(L.Draw.Event.EDITED, onDrawEdited);
     
     return () => { 
       drawnItems.off('layeradd layerremove', updateDeleteButtonState);
+      setImportContainer(null);
       map.removeControl(drawControl); 
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
+      map.off(L.Draw.Event.EDITED, onDrawEdited);
     };
-  }, [map, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, setBbox]);
+  }, [map, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, aoiGeometry, onAoiImported, setBbox, t]);
   
-  return null;
+  return <>
+    {importContainer && <GeoJsonAoiImportControl container={importContainer} onImport={onAoiImported} />}
+    {aoiError && <Alert severity="error" onClose={() => setAoiError(null)} sx={{ position: 'absolute', bottom: 32, left: 48, right: 48, zIndex: 1000 }}>{aoiError}</Alert>}
+  </>;
 }
 
 const POINT_SEARCH_HALF_SIZE_METERS = 5;
@@ -360,10 +421,11 @@ function createPointSearchBbox(longitude: number, latitude: number): [number, nu
  * Drops a crosshair with a "Search here" chip wherever the user clicks on empty map.
  * Ignores clicks that finish a draw, edit or delete gesture.
  */
-function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, label, color }: {
+function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, drawnItemsRef, label, color }: {
   onSearchHere: (longitude: number, latitude: number) => void;
   onCancel: () => void;
   onCandidateSelected: (longitude: number, latitude: number) => void;
+  drawnItemsRef: React.RefObject<L.FeatureGroup>;
   label: string;
   color: string;
 }) {
@@ -387,14 +449,26 @@ function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, label, col
   }), [label, color]);
 
   useEffect(() => {
+    const drawnItems = drawnItemsRef.current;
+    const onAoiRemoved = () => {
+      pointRef.current = null;
+      setPoint(null);
+    };
+    drawnItems.on('layerremove', onAoiRemoved);
+    return () => { drawnItems.off('layerremove', onAoiRemoved); };
+  }, [drawnItemsRef]);
+
+  useEffect(() => {
+    const drawnItems = drawnItemsRef.current;
     let toolActive = false;
     let toolStoppedAt = 0;
     const onToolStart = () => { toolActive = true; updatePoint(null); };
     const onToolStop = () => { toolActive = false; toolStoppedAt = Date.now(); };
     // The click that ends a rectangle drag arrives just after draw:drawstop.
     const onClick = (e: L.LeafletMouseEvent) => {
+      if (drawnItems.getLayers().length > 0) return;
       const target = e.originalEvent.target;
-      if (target instanceof Element && target.closest('.stac-result-layer-control')) return;
+      if (target instanceof Element && target.closest('.stac-result-layer-control, .leaflet-control, .leaflet-interactive, .leaflet-marker-icon')) return;
       if (!toolActive && Date.now() - toolStoppedAt > 300) {
         const candidate = e.latlng.wrap();
         updatePoint(candidate);
@@ -420,7 +494,7 @@ function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, label, col
       map.off('click', onClick);
       map.off('keydown', onKeyDown);
     };
-  }, [map, onCancel, onCandidateSelected]);
+  }, [map, onCancel, onCandidateSelected, drawnItemsRef]);
 
   if (!point) return null;
   return (
@@ -559,9 +633,59 @@ const footprintStyles = (
       animation: 'stacFootprintIn 200ms ease-out both',
       transition: 'filter 120ms ease',
     },
+    '.stac-aoi-control': {
+      border: '2px solid rgba(0,0,0,0.2)',
+      borderRadius: 4,
+      backgroundColor: '#fff',
+      backgroundClip: 'padding-box',
+    },
+    '.stac-aoi-control .leaflet-draw-toolbar': {
+      border: 0,
+      borderRadius: 0,
+      boxShadow: 'none',
+      marginTop: 0,
+    },
+    '.stac-aoi-control .leaflet-draw-toolbar a': {
+      width: 30,
+      height: 30,
+      lineHeight: '30px',
+      borderRadius: 0,
+      borderBottom: '1px solid #ccc',
+    },
+    '.stac-aoi-control .stac-aoi-import-slot': {
+      width: 30,
+      height: 30,
+      borderBottom: '1px solid #ccc',
+    },
+    '.stac-aoi-control .leaflet-draw-edit-remove': {
+      borderBottom: 0,
+    },
+    '.leaflet-draw-toolbar .leaflet-draw-edit-remove': {
+      position: 'relative',
+      overflow: 'visible',
+    },
+    '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available::before': {
+      content: 'attr(data-geometry-count)',
+      position: 'absolute',
+      top: -5,
+      right: -7,
+      minWidth: 16,
+      height: 16,
+      padding: '0 3px',
+      boxSizing: 'border-box',
+      borderRadius: 8,
+      backgroundColor: '#d32f2f',
+      color: '#fff',
+      font: '700 10px/16px "Helvetica Neue", Helvetica, Arial, sans-serif',
+      textAlign: 'center',
+      pointerEvents: 'none',
+      zIndex: 1,
+    },
+    '.leaflet-draw-toolbar .leaflet-draw-edit-remove.leaflet-disabled::before': {
+      backgroundColor: '#757575',
+    },
     '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available': {
       backgroundImage: 'none',
-      position: 'relative',
     },
     '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available::after': {
       content: '""',
@@ -595,7 +719,7 @@ export default function StacMap(props: StacMapProps) {
   return <ProjectedStacMap key={baseMapLayer?.type === "wmts" ? "arctic" : "mercator"} {...props} previousViewRequestRef={previousViewRequestRef} />;
 }
 
-function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, focusedItem = null, hoveredItem = null, onHoverItem, activeThumbnails = {}, clearAoiTrigger, aoiBbox, setBbox, previousViewRequestRef }: StacMapProps & {
+function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, focusedItem = null, hoveredItem = null, onHoverItem, activeThumbnails = {}, clearAoiTrigger, aoiBbox, aoiGeometry, onAoiImported, setBbox, previousViewRequestRef }: StacMapProps & {
   previousViewRequestRef: React.RefObject<MapViewRequest | null>;
 }) {
   const theme = useTheme();
@@ -633,7 +757,9 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
     }
 
     setCoordinateDialogOpen(false);
-    searchAroundPoint(longitude, latitude, true);
+    const bbox = createPointSearchBbox(longitude, latitude);
+    replacePointAoi(bbox);
+    setCoordinateZoomBounds(bbox);
   };
 
   const replacePointAoi = useCallback((bbox: [number, number, number, number]) => {
@@ -691,11 +817,11 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
       )
       }
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
-      <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} aoiBbox={aoiBbox} setBbox={setBbox}/>
+      <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} aoiBbox={aoiBbox} aoiGeometry={aoiGeometry} onAoiImported={onAoiImported} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController basemap={baseMapLayer} bounds={zoomBounds} coordinateBounds={coordinateZoomBounds} previousRequestRef={previousViewRequestRef} />
       <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
-      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCancel={handleCancelSearchHere} onCandidateSelected={handleCandidateSelected} label={t('searchHere')} color={brandColor} />
+      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCancel={handleCancelSearchHere} onCandidateSelected={handleCandidateSelected} drawnItemsRef={drawnItemsRef} label={t('searchHere')} color={brandColor} />
 
       <div ref={resultLayerControlRef} className="stac-result-layer-control" style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
         <ToggleButtonGroup

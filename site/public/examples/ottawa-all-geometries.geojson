@@ -1,0 +1,165 @@
+{
+  "type": "FeatureCollection",
+  "name": "Ottawa GeoJSON Geometry Examples",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Parliament Hill reference point",
+        "description": "Illustrative Point near Parliament Hill, Ottawa."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-75.7009, 45.4236]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ottawa and Gatineau reference points",
+        "description": "Illustrative MultiPoint near Parliament Hill, ByWard Market, and the Canadian Museum of History."
+      },
+      "geometry": {
+        "type": "MultiPoint",
+        "coordinates": [
+          [-75.7009, 45.4236],
+          [-75.692, 45.4275],
+          [-75.7092, 45.4298]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Rideau Canal corridor",
+        "description": "Illustrative LineString running south from downtown Ottawa; not a surveyed route."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-75.6943, 45.425],
+          [-75.6925, 45.421],
+          [-75.6878, 45.4155],
+          [-75.6818, 45.4075],
+          [-75.682, 45.4005]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ottawa River bank corridors",
+        "description": "Illustrative MultiLineString with separate Ottawa-side and Gatineau-side lines."
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [-75.7305, 45.4155],
+            [-75.719, 45.419],
+            [-75.708, 45.424],
+            [-75.699, 45.427]
+          ],
+          [
+            [-75.738, 45.426],
+            [-75.725, 45.428],
+            [-75.714, 45.432],
+            [-75.703, 45.434]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Central Ottawa area with an exclusion hole",
+        "description": "Illustrative Polygon with a counterclockwise outer ring and a clockwise inner ring. Neither ring represents an official boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-75.718, 45.408],
+            [-75.687, 45.408],
+            [-75.687, 45.422],
+            [-75.718, 45.422],
+            [-75.718, 45.408]
+          ],
+          [
+            [-75.707, 45.412],
+            [-75.707, 45.418],
+            [-75.699, 45.418],
+            [-75.699, 45.412],
+            [-75.707, 45.412]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Separate Ottawa and Gatineau areas",
+        "description": "Illustrative MultiPolygon containing two disjoint areas, one on each side of the Ottawa River."
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [-75.755, 45.397],
+              [-75.739, 45.397],
+              [-75.739, 45.407],
+              [-75.755, 45.407],
+              [-75.755, 45.397]
+            ]
+          ],
+          [
+            [
+              [-75.73, 45.439],
+              [-75.713, 45.439],
+              [-75.713, 45.45],
+              [-75.73, 45.45],
+              [-75.73, 45.439]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "ByWard Market mixed geometry group",
+        "description": "Illustrative GeometryCollection containing a point, a line, and a polygon around ByWard Market. Not an official site boundary."
+      },
+      "geometry": {
+        "type": "GeometryCollection",
+        "geometries": [
+          {
+            "type": "Point",
+            "coordinates": [-75.692, 45.4275]
+          },
+          {
+            "type": "LineString",
+            "coordinates": [
+              [-75.6945, 45.4255],
+              [-75.692, 45.4275],
+              [-75.688, 45.43]
+            ]
+          },
+          {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [-75.695, 45.425],
+                [-75.685, 45.425],
+                [-75.685, 45.432],
+                [-75.695, 45.432],
+                [-75.695, 45.425]
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
