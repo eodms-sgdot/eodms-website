@@ -5,18 +5,19 @@ import type { Language } from "./i18n";
 /**
  * If adding a new BaseMapType, add logic to StacMap.tsx's MapContainer to display the new type.
  */
-export type BaseMapType = "tile" | "vectortile";
+export type BaseMapType = "tile" | "vectortile" | "wmts";
 
 /**
  * Add to these constants to support new Base Maps. BaseMapId matches the name of a baseMap entry in baseMaps array.
  */
-export type BaseMapId = "osm" | "cbmt";
+export type BaseMapId = "osm" | "cbmt" | "arcticSdi";
 
 const baseMaps:BaseMap[] = [
     {
         name: "osm",
         url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
         type: "tile",
+        extent: [-20037508.342789244, -20037508.342789244, 20037508.342789244, 20037508.342789244],
         title: [
             {language: "en", value: "OpenStreetMap"},
             {language: "fr", value: "OpenStreetMap"}
@@ -30,6 +31,7 @@ const baseMaps:BaseMap[] = [
         name: "cbmt",
         url: "https://tiles.arcgis.com/tiles/HsjBaDykC1mjhXz9/arcgis/rest/services/CBMT_CBCT_3857_V_OSM/VectorTileServer",
         type: "vectortile",
+        extent: [-20037508.3427, -20037508.342787, 20037508.342787, 20037508.342787],
         title: [
             {language: "en", value: "Canada Basemap - Transportation"},
             {language: "fr", value: "Carte de base du Canada - Transport"}
@@ -37,6 +39,20 @@ const baseMaps:BaseMap[] = [
         attribution: [
             {language: "en", value: "&copy; Natural Resources Canada"},
             {language: "fr", value: "&copy; Ressources naturelles Canada"}
+        ]
+    },
+    {
+        name: "arcticSdi",
+        url: "https://basemap.arctic-sdi.org/mapcache/wmts/1.0.0/arctic_cascading/default/3573/{z}/{y}/{x}.png",
+        type: "wmts",
+        extent: [-4889334.802955, -4889334.802955, 4889334.802955, 4889334.802955],
+        title: [
+            {language: "en", value: "Arctic SDI Basemap"},
+            {language: "fr", value: "Carte de base de l'IDS arctique"}
+        ],
+        attribution: [
+            {language: "en", value: "&copy; Arctic SDI"},
+            {language: "fr", value: "&copy; Arctic SDI"}
         ]
     }
 ];
@@ -47,6 +63,8 @@ export interface BaseMap {
     name: BaseMapId,
     url: string,
     type: BaseMapType,
+    /** Advertised [minX, minY, maxX, maxY] coverage in the basemap's native CRS. */
+    extent: [number, number, number, number],
     title: LanguageValue[]
     attribution: LanguageValue[]
 }

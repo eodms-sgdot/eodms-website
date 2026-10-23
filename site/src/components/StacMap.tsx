@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useContext, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap, GeoJSON, Marker, CircleMarker } from 'react-leaflet';
 import L, { LatLng, type LeafletEvent } from 'leaflet';
+import 'proj4leaflet';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, GlobalStyles, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { pointOnFeature } from '@turf/turf';
+import { coordEach } from '@turf/meta';
 import { AppContext } from '../AppContext';
 import { getHighlightColor } from '../theme';
 import 'leaflet/dist/leaflet.css';
@@ -17,10 +19,30 @@ import RotatedImageOverlay from 'react-leaflet-rotated-imageoverlay';
 import type { SearchResult } from 'leaflet-geosearch/dist/providers/provider.js';
 import { GeolocatorProvider } from './providers/GeolocatorProvider';
 import { VectorTileLayer } from './layer/VectorTileLayer';
-import { getBaseMapAttribution } from "../basemaps";
+import { getBaseMapAttribution, type BaseMap } from "../basemaps";
 
 declare global { interface Window { L: typeof L; } }
 window.L = L;
+
+const ARCTIC_GRID_ORIGIN: [number, number] = [-4889334.802955, 4889334.802955];
+const ARCTIC_GRID_BOUNDS = L.bounds(
+  L.point(-4889334.802955, -4889334.802955),
+  L.point(4889334.802955, 4889334.802955)
+);
+const ARCTIC_GRID_RESOLUTIONS = Array.from(
+  { length: 11 },
+  (_, zoom) => 136421171.96428573 * 0.00028 / (2 ** zoom)
+);
+const ARCTIC_CRS = new L.Proj.CRS(
+  'EPSG:3573',
+  '+proj=laea +lat_0=90 +lon_0=-100 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
+  { origin: ARCTIC_GRID_ORIGIN, resolutions: ARCTIC_GRID_RESOLUTIONS, bounds: ARCTIC_GRID_BOUNDS }
+);
+// Leaflet constrains panning using the projected SW/NE diagonal of maxBounds.
+const ARCTIC_VIEW_BOUNDS = L.latLngBounds(
+  ARCTIC_CRS.unproject(L.point(...ARCTIC_GRID_ORIGIN)),
+  ARCTIC_CRS.unproject(L.point(-ARCTIC_GRID_ORIGIN[0], -ARCTIC_GRID_ORIGIN[1]))
+);
 
 /**
  * Properties for the StacMap component.
@@ -78,10 +100,13 @@ function FootprintDensityController({ items, onDensityChange }: {
   useEffect(() => {
     let previousDensity: boolean | null = null;
     const updateDensity = () => {
-      const mapBounds = map.getBounds();
+      const mapBounds = map.getPixelBounds();
       const visibleFootprints = items.reduce((count, item) => {
         if (!item.geometry) return count;
-        const footprintBounds = L.geoJSON(item).getBounds();
+        const footprintBounds = L.bounds([]);
+        coordEach(item.geometry, coordinates => {
+          footprintBounds.extend(map.project(L.latLng(coordinates[1], coordinates[0])));
+        });
         return footprintBounds.isValid() && mapBounds.intersects(footprintBounds) ? count + 1 : count;
       }, 0);
       const isDense = visibleFootprints >= DENSE_FOOTPRINT_THRESHOLD;
@@ -117,27 +142,109 @@ function parseBbox(bbox?: string | null): [number, number, number, number] | nul
  * @returns null
  */
 function ClearAoiController({ trigger, drawnItemsRef }: { trigger?: number, drawnItemsRef: React.RefObject<L.FeatureGroup> }) {
+  const previousTrigger = useRef(trigger);
   useEffect(() => {
-    if (trigger) drawnItemsRef.current?.clearLayers();
+    if (trigger !== previousTrigger.current && trigger) drawnItemsRef.current?.clearLayers();
+    previousTrigger.current = trigger;
   }, [trigger, drawnItemsRef]);
   return null;
 }
 
-/**
- * Invisible utility component that taps into the react-leaflet map context 
- * to programmatically fly to a specific bounding box.
- * * @param {Object} props
- * @param {[number, number, number, number] | null} props.bounds - The [W, S, E, N] bounds to zoom to.
- */
-function MapZoomController({ bounds }: { bounds?: [number, number, number, number] | null }) {
+function fitMapBounds(map: L.Map, bounds: L.LatLngBounds) {
+  if (map.options.crs !== ARCTIC_CRS) {
+    map.fitBounds(bounds, { padding: [50, 50], animate: true });
+    return;
+  }
+
+  // Polar parallels curve, so opposite geographic corners do not bound their projected extent.
+  const projectedBounds = L.bounds([]);
+  for (let step = 0; step <= 64; step++) {
+    const fraction = step / 64;
+    const longitude = bounds.getWest() + (bounds.getEast() - bounds.getWest()) * fraction;
+    const latitude = bounds.getSouth() + (bounds.getNorth() - bounds.getSouth()) * fraction;
+    for (const position of [
+      L.latLng(bounds.getSouth(), longitude),
+      L.latLng(bounds.getNorth(), longitude),
+      L.latLng(latitude, bounds.getWest()),
+      L.latLng(latitude, bounds.getEast())
+    ]) {
+      projectedBounds.extend(map.project(position, 0));
+    }
+  }
+
+  const size = projectedBounds.getSize();
+  const available = map.getSize().subtract([100, 100]);
+  const scale = Math.min(Math.max(1, available.x) / size.x, Math.max(1, available.y) / size.y);
+  const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), Math.floor(ARCTIC_CRS.zoom(scale * ARCTIC_CRS.scale(0)))));
+  map.setView(map.unproject(projectedBounds.getCenter(), 0), zoom, { animate: false });
+}
+
+function ArcticViewConstraints() {
   const map = useMap();
   useEffect(() => {
-    if (bounds) {
-      // On mobile the results panel closes in the same update, so the map was 0px wide until now.
-      map.invalidateSize({ animate: false });
-      map.fitBounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]], { padding: [50, 50], animate: true });
+    if (map.options.crs !== ARCTIC_CRS) return;
+    const updateMinimumZoom = () => {
+      const size = map.getSize();
+      // Allow the full tile grid to fit, but keep viewport corners inside LAEA's inverse domain.
+      const inverseRadius = 2 * 6371007.180918;
+      const gridHalfSize = ARCTIC_GRID_ORIGIN[1];
+      const maximumResolution = Math.min(
+        2 * inverseRadius / Math.hypot(size.x, size.y),
+        2 * Math.sqrt(inverseRadius ** 2 - gridHalfSize ** 2) / Math.max(size.x, size.y)
+      );
+      map.setMinZoom(Math.max(0, ARCTIC_CRS.zoom(1 / maximumResolution)));
+    };
+    updateMinimumZoom();
+    map.on('resize', updateMinimumZoom);
+    return () => { map.off('resize', updateMinimumZoom); };
+  }, [map]);
+  return null;
+}
+
+interface MapViewRequest {
+  basemap: BaseMap | undefined;
+  bounds: StacMapProps['zoomBounds'];
+  coordinateBounds: StacMapProps['zoomBounds'];
+}
+
+function MapZoomController({ basemap, bounds, coordinateBounds, initialBounds, previousRequestRef }: {
+  basemap: BaseMap | undefined;
+  bounds: StacMapProps['zoomBounds'];
+  coordinateBounds: StacMapProps['zoomBounds'];
+  initialBounds: StacMapProps['zoomBounds'];
+  previousRequestRef: React.RefObject<MapViewRequest | null>;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const previous = previousRequestRef.current;
+    previousRequestRef.current = { basemap, bounds, coordinateBounds };
+    const basemapChanged = previous && previous.basemap?.name !== basemap?.name;
+    map.invalidateSize({ animate: false });
+
+    if (basemapChanged && basemap) {
+      const [minX, minY, maxX, maxY] = basemap.extent;
+      const crs = map.options.crs!;
+      const extent = L.bounds(
+        map.project(crs.unproject(L.point(minX, minY)), 0),
+        map.project(crs.unproject(L.point(maxX, maxY)), 0)
+      );
+      const available = map.getSize().subtract(basemap.type === 'wmts' ? [0, 0] : [40, 40]);
+      const size = extent.getSize();
+      const scale = Math.min(Math.max(1, available.x) / size.x, Math.max(1, available.y) / size.y);
+      const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), crs.zoom(scale * crs.scale(0))));
+      map.setView(map.unproject(extent.getCenter(), 0), zoom, { animate: false });
+      return;
     }
-  }, [bounds, map]);
+
+    const requestedBounds = coordinateBounds && coordinateBounds !== previous?.coordinateBounds
+      ? coordinateBounds
+      : bounds && bounds !== previous?.bounds
+        ? bounds
+        : !previous ? initialBounds : null;
+    if (requestedBounds) {
+      fitMapBounds(map, L.latLngBounds([[requestedBounds[1], requestedBounds[0]], [requestedBounds[3], requestedBounds[2]]]));
+    }
+  }, [basemap, bounds, coordinateBounds, initialBounds, map, previousRequestRef]);
   return null;
 }
 
@@ -351,7 +458,7 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
         const southWest = L.latLng(b[0][0], b[0][1]);
         const northEast = L.latLng(b[1][0], b[1][1]);
         const bounds = L.latLngBounds(southWest, northEast);
-        map.fitBounds(bounds, { padding: [50, 50], animate: true });
+        fitMapBounds(map, bounds);
 
         // Draw the bounding box on the map
         const rectangle = L.rectangle(bounds, {
@@ -467,7 +574,16 @@ const footprintStyles = (
   }} />
 );
 
-export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox }: StacMapProps) {
+export default function StacMap(props: StacMapProps) {
+  const { baseMapLayer } = useContext(AppContext)!;
+  const previousViewRequestRef = useRef<MapViewRequest | null>(null);
+  // Leaflet layers and controls belong to one map and must not survive a CRS change.
+  return <ProjectedStacMap key={baseMapLayer?.type === "wmts" ? "arctic" : "mercator"} {...props} previousViewRequestRef={previousViewRequestRef} />;
+}
+
+function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox, previousViewRequestRef }: StacMapProps & {
+  previousViewRequestRef: React.RefObject<MapViewRequest | null>;
+}) {
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
@@ -483,7 +599,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
   const coordinateLabels = [t('longitude'), t('latitude')];
-  const initialBounds = useRef(parseBbox(initialBbox));
+  const [initialBounds] = useState(() => parseBbox(initialBbox));
   useEffect(() => {
     if (resultLayerControlRef.current) {
       L.DomEvent.disableClickPropagation(resultLayerControlRef.current);
@@ -529,12 +645,26 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
   return (
     <>
     {footprintStyles}
-    <MapContainer center={[56.13, -106.34]} zoom={4} style={{ height: '100%', width: '100%' }}>
+    <MapContainer
+      center={[56.13, -106.34]}
+      zoom={4}
+      zoomSnap={baseMapLayer?.type === "wmts" ? 0 : 1}
+      minZoom={0}
+      maxZoom={baseMapLayer?.type === "wmts" ? 10 : 18}
+      maxBounds={baseMapLayer?.type === "wmts" ? ARCTIC_VIEW_BOUNDS : undefined}
+      maxBoundsViscosity={baseMapLayer?.type === "wmts" ? 1 : 0}
+      zoomAnimation={false}
+      crs={baseMapLayer?.type === "wmts" ? ARCTIC_CRS : L.CRS.EPSG3857}
+      style={{ height: '100%', width: '100%' }}
+    >
+      <ArcticViewConstraints />
       { baseMapLayer ? (
         baseMapLayer.type === "tile" ? (
           <TileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} />
         ) : baseMapLayer.type === "vectortile" ? (
           <VectorTileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} />
+        ) : baseMapLayer.type === "wmts" ? (
+          <TileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} maxNativeZoom={10} />
         ) : (
           <></> // Invalid layer type
         )
@@ -545,9 +675,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
       <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} initialBbox={initialBbox} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
-      <MapZoomController bounds={zoomBounds} />
-      <MapZoomController bounds={coordinateZoomBounds} />
-      <MapZoomController bounds={initialBounds.current} />
+      <MapZoomController basemap={baseMapLayer} bounds={zoomBounds} coordinateBounds={coordinateZoomBounds} initialBounds={initialBounds} previousRequestRef={previousViewRequestRef} />
       <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
       <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCandidateSelected={handleCandidateSelected} label={t('searchHere')} color={brandColor} />
 
@@ -612,7 +740,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
         const delay = Math.min(index * FOOTPRINT_STAGGER_MS, FOOTPRINT_STAGGER_MAX_MS);
         return (
           <GeoJSON
-            key={`footprint-${item.id}`}
+            key={`footprint-${item.id}-${index}`}
             data={item}
             style={style}
             onEachFeature={(_, layer) => {
@@ -630,7 +758,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
         );
       })}
 
-      {resultLayer === 'points' && searchResults.map((item) => {
+      {resultLayer === 'points' && searchResults.map((item, index) => {
         const position = getRepresentativePosition(item);
         if (!position) return null;
         const isSelected = selectedFootprints.has(item.id);
@@ -638,7 +766,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
         const color = isSelected ? highlightColor : brandColor;
         return (
           <CircleMarker
-            key={`point-${item.id}`}
+            key={`point-${item.id}-${index}`}
             center={position}
             radius={isSelected || isHovered ? 7 : 5}
             pathOptions={{
@@ -674,7 +802,7 @@ export default function StacMap({ onAoiDrawn, onLocationSelected, zoomBounds, on
         }
         return (
           <Marker
-            key={`chip-${item.id}-${isSelected}`}
+            key={`chip-${item.id}-${index}-${isSelected}`}
             position={L.geoJSON(item).getBounds().getCenter()}
             icon={icon}
             interactive={isSelected}

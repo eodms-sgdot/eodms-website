@@ -56,6 +56,33 @@ the main experience.
 The app automatically shows the `PROXY` badge when running through the local
 Vite development server. No environment setting is needed.
 
+## Basemaps
+
+Preferences offers OpenStreetMap, Canada Basemap - Transportation, and Arctic
+SDI. Arctic SDI uses the `arctic_cascading` WMTS layer with the Canada-centered
+EPSG:3573 tile matrix (zoom levels 0-10), rather than Web Mercator.
+
+Switching between Arctic SDI and a Web Mercator basemap recreates the map,
+including its drawing layers and interaction handlers. Search results, selected
+items, and the current area of interest are retained. Every basemap change fits
+the selected map's advertised native extent: the global Web Mercator tile grid
+for OpenStreetMap and Canada Basemap, or the EPSG:3573 grid advertised by Arctic
+SDI. This takes priority over previous result/AOI zooms on switching; subsequent
+result and coordinate zoom actions still work normally. On initial load, result
+zooms take priority over the saved area of interest. Arctic result extents are
+fitted in projected coordinates, including the curvature of polar parallels. Density checks likewise
+use projected coordinates. Zoom transitions are disabled so finite polar
+coordinates are not extrapolated during animation, and pending zoom callbacks
+cannot target a map removed by a basemap switch. Arctic panning is constrained
+to the service's projected grid, with a viewport-dependent minimum zoom to
+keep viewport corners inside the finite projection's inverse domain while
+allowing the full advertised extent to fit.
+
+Map layers are keyed by result ID and page position because a search response
+can repeat an item ID. Numbered labels retain their result-list positions and
+are removed on deselection or when switching to Points mode, without leaving
+stale markers behind.
+
 ## Flexible Date Searches
 
 The custom date range uses React Aria's segmented date/time fields. Enter a
