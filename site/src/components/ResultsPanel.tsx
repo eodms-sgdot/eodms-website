@@ -138,7 +138,7 @@ const ButtonProgress = ({ value, color }: { value?: number; color: "primary" | "
 );
 
 type ResultsView = "cards" | "table";
-type SortKey = string;
+type SortKey = string | null;
 
 const VIEW_STORAGE_KEY = "eodms.resultsView";
 const COLUMNS_STORAGE_KEY = "eodms.resultsColumns";
@@ -206,8 +206,6 @@ interface ResultsPanelProps {
   hoveredItem: string | null;
   /** Callback fired when the pointer enters or leaves a result card */
   onHoverItem: (id: string | null) => void;
-  /** Added to each result's list position to number it across pages */
-  numberOffset: number;
   /** Dictionary tracking which STAC Items have their map thumbnails active */
   activeThumbnails: Record<string, string>;
   /** Callback fired when a user toggles the image overlay button */
@@ -261,7 +259,6 @@ export default function ResultsPanel({
   focusedItem,
   hoveredItem,
   onHoverItem,
-  numberOffset,
   activeThumbnails,
   onToggleThumbnail,
   onClear,
@@ -280,7 +277,7 @@ export default function ResultsPanel({
   const [sourceCopyNotice, setSourceCopyNotice] = useState<"success" | "error" | null>(null);
   const [view, setView] = useState<ResultsView>(() =>
     localStorage.getItem(VIEW_STORAGE_KEY) === "table" ? "table" : "cards");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "number", dir: "asc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
   const [columnPrefs, setColumnPrefs] = useState<string[] | null>(loadColumnPrefs);
   const [columnMenuEl, setColumnMenuEl] = useState<HTMLElement | null>(null);
   const [exportError, setExportError] = useState(false);
@@ -606,30 +603,30 @@ export default function ResultsPanel({
   const toggleSort = (key: SortKey) =>
     setSort(prev => ({ key, dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc" }));
 
-  // Same `results` datasource as the cards; `number` keeps the map marker numbering.
   const sortedRows = useMemo(() => {
-    const rows = results.map((item, index) => ({
+    const rows = results.map(item => ({
       item,
-      number: numberOffset + index + 1,
       label: item.properties?.order_key ? String(item.properties.order_key) : item.id,
     }));
+    const sortKey = sort.key;
+    if (sortKey === null) return rows;
+
     const factor = sort.dir === "asc" ? 1 : -1;
     return rows.sort((a, b) => {
-      if (sort.key === "number") return (a.number - b.number) * factor;
-      if (sort.key === "id") return a.label.localeCompare(b.label, undefined, { numeric: true }) * factor;
-      const va: unknown = a.item.properties?.[sort.key];
-      const vb: unknown = b.item.properties?.[sort.key];
+      if (sortKey === "id") return a.label.localeCompare(b.label, undefined, { numeric: true }) * factor;
+      const va: unknown = a.item.properties?.[sortKey];
+      const vb: unknown = b.item.properties?.[sortKey];
       const missingA = va === null || va === undefined || va === "";
       const missingB = vb === null || vb === undefined || vb === "";
       // Items without a value always sort last.
       if (missingA !== missingB) return missingA ? 1 : -1;
-      if (missingA) return a.number - b.number;
+      if (missingA) return 0;
       const cmp = typeof va === "number" && typeof vb === "number"
         ? va - vb
-        : formatCell(sort.key, va).localeCompare(formatCell(sort.key, vb), undefined, { numeric: true });
-      return cmp * factor || a.number - b.number;
+        : formatCell(sortKey, va).localeCompare(formatCell(sortKey, vb), undefined, { numeric: true });
+      return cmp * factor;
     });
-  }, [results, numberOffset, sort]);
+  }, [results, sort]);
 
   // Property columns offered by the current results, so any mission's fields are available.
   const candidateKeys = useMemo(() => {
@@ -1018,7 +1015,6 @@ export default function ResultsPanel({
       }}>
         <TableHead>
           <TableRow>
-            {sortCell("number", "#")}
             <TableCell padding="checkbox" />
             <TableCell padding="checkbox" />
             <TableCell padding="checkbox" aria-label={t("actions")} />
@@ -1028,12 +1024,13 @@ export default function ResultsPanel({
           </TableRow>
         </TableHead>
         <TableBody>
-          {sortedRows.map(({ item, number, label }) => {
+          {sortedRows.map(({ item, label }) => {
             const isSelected = selectedFootprints.has(item.id);
             const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
+            const isHighlighted = isSelected || isFocused;
             const thumbUrl = buildThumbUrl(item);
 
             return (
@@ -1047,11 +1044,12 @@ export default function ResultsPanel({
                 sx={{
                   cursor: "pointer",
                   "&:focus-visible": { outline: `2px solid ${brandColor}`, outlineOffset: -2 },
-                  bgcolor: isFocused ? alpha(brandColor, 0.1) : isHovered ? alpha(itemColor, 0.12) : undefined,
-                  "& > td:first-of-type": { borderLeft: `4px solid ${itemColor}` },
+                  bgcolor: isFocused ? alpha(brandColor, 0.1) : isSelected ? alpha(highlightColor, 0.12) : isHovered ? alpha(itemColor, 0.12) : undefined,
+                  "& > td": isHighlighted ? { borderTop: `2px solid ${brandColor}`, borderBottom: `2px solid ${brandColor}` } : undefined,
+                  "& > td:first-of-type": { borderLeft: isHighlighted ? `2px solid ${brandColor}` : `4px solid ${itemColor}` },
+                  "& > td:last-of-type": isHighlighted ? { borderRight: `2px solid ${brandColor}` } : undefined,
                 }}
               >
-                <TableCell sx={{ fontWeight: 700 }}>{number}</TableCell>
                 <TableCell padding="checkbox">
                   <Checkbox
                     size="small"
@@ -1231,12 +1229,13 @@ export default function ResultsPanel({
         ) : view === "table" ? (
           renderTable()
         ) : (
-          results.map((item, index) => {
+          results.map(item => {
             const isSelected = selectedFootprints.has(item.id);
             const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
             const isThumbnailActive = !!activeThumbnails[item.id];
             const isFocused = item.id === focusedItem;
+            const isHighlighted = isSelected || isFocused;
             const thumbUrl = buildThumbUrl(item);
             const orderKey:string|null = item.properties?.order_key ? String(item.properties?.order_key) : null;
             const datetime = formatCell(DATE_KEY, item.properties?.[DATE_KEY], isNaplExperience);
@@ -1256,36 +1255,13 @@ export default function ResultsPanel({
                   position: "relative",
                   borderRadius: 0,
                   borderLeft: `4px solid ${itemColor}`,
-                  bgcolor: isFocused ? alpha(brandColor, 0.1) : "white",
-                  boxShadow: isHovered ? `0 0 0 2px ${alpha(itemColor, 0.6)}` : undefined,
+                  bgcolor: isFocused ? alpha(brandColor, 0.1) : isSelected ? alpha(highlightColor, 0.12) : "background.paper",
+                  outline: isHighlighted ? `2px solid ${brandColor}` : undefined,
+                  outlineOffset: isHighlighted ? "-2px" : undefined,
+                  boxShadow: isHovered && !isSelected ? `0 0 0 2px ${alpha(itemColor, 0.6)}` : undefined,
                   transition: "box-shadow 150ms ease",
                 }}
               >
-                <Box
-                  aria-hidden
-                  sx={{
-                    position: "absolute",
-                    top: 6,
-                    left: 6,
-                    zIndex: 1,
-                    minWidth: 24,
-                    height: 24,
-                    px: 0.5,
-                    borderRadius: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "2px solid #fff",
-                    boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    pointerEvents: "none",
-                    bgcolor: isSelected || isHovered ? itemColor : alpha(brandColor, 0.75),
-                    color: theme.palette.getContrastText(itemColor),
-                  }}
-                >
-                  {numberOffset + index + 1}
-                </Box>
                 <Checkbox
                   size="small"
                   checked={isSelected}

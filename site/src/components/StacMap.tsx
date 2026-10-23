@@ -63,12 +63,12 @@ interface StacMapProps {
   selectedFootprints?: ReadonlySet<string>;
   /** Callback fired when a user clicks on a rendered GeoJSON footprint */
   onFeatureClick?: (id: string) => void;
+  /** ID of the result currently focused from the map or results panel */
+  focusedItem?: string | null;
   /** The ID of the item currently hovered on the map or in the results list */
   hoveredItem?: string | null;
   /** Callback fired when the pointer enters or leaves a footprint */
   onHoverItem?: (id: string | null) => void;
-  /** Added to each result's list position to number it across pages */
-  numberOffset?: number;
   /** Dictionary mapping STAC Item IDs to the URL of their active thumbnail image */
   activeThumbnails?: Record<string, string>;
   /** Used to clear the current AOI */
@@ -505,9 +505,11 @@ function SearchControl({onLocationSelected, searchLabel, drawnItemsRef, selected
  */
 const FOOTPRINT_STAGGER_MS = 35;
 const FOOTPRINT_STAGGER_MAX_MS = 700;
-// Reusing icon instances stops Leaflet re-rendering chips (and replaying their animation) on every render.
-const chipIconCache = new Map<string, L.DivIcon>();
+const itemIdIconCache = new Map<string, L.DivIcon>();
 const EMPTY_SET: ReadonlySet<string> = new Set();
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character]!));
 
 const footprintStyles = (
   <GlobalStyles styles={{
@@ -521,17 +523,17 @@ const footprintStyles = (
       animation: 'stacFootprintIn 450ms cubic-bezier(0.2, 0.8, 0.2, 1.2) both',
       transition: 'fill-opacity 150ms ease, stroke-opacity 150ms ease, stroke-width 150ms ease',
     },
-    '.stac-footprint-chip span': {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '100%',
-      height: '100%',
-      borderRadius: '12px',
+    '.stac-item-id-chip': { pointerEvents: 'none' },
+    '.stac-item-id-chip span': {
+      display: 'block',
+      width: 'max-content',
+      maxWidth: 'min(340px, 70vw)',
+      padding: '5px 8px',
+      borderRadius: '4px',
       border: '2px solid #fff',
       boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
-      font: '700 12px/1 "Helvetica Neue", Helvetica, Arial, sans-serif',
-      animation: 'stacFootprintIn 250ms ease-out both',
+      font: '700 12px/1.3 "Helvetica Neue", Helvetica, Arial, sans-serif',
+      overflowWrap: 'anywhere',
     },
     '@keyframes stacSearchPulse': {
       from: { transform: 'scale(1)', opacity: 0.8 },
@@ -581,7 +583,7 @@ const footprintStyles = (
     },
     '.stac-search-here:hover .chip, .stac-search-here:focus-visible .chip': { filter: 'brightness(1.15)' },
     '@media (prefers-reduced-motion: reduce)': {
-      '.stac-footprint, .stac-footprint-chip span, .stac-search-here .chip, .stac-search-here .pulse': { animation: 'none', transition: 'none' },
+      '.stac-footprint, .stac-search-here .chip, .stac-search-here .pulse': { animation: 'none', transition: 'none' },
     },
   }} />
 );
@@ -593,7 +595,7 @@ export default function StacMap(props: StacMapProps) {
   return <ProjectedStacMap key={baseMapLayer?.type === "wmts" ? "arctic" : "mercator"} {...props} previousViewRequestRef={previousViewRequestRef} />;
 }
 
-function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, aoiBbox, setBbox, previousViewRequestRef }: StacMapProps & {
+function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, focusedItem = null, hoveredItem = null, onHoverItem, activeThumbnails = {}, clearAoiTrigger, aoiBbox, setBbox, previousViewRequestRef }: StacMapProps & {
   previousViewRequestRef: React.RefObject<MapViewRequest | null>;
 }) {
   const theme = useTheme();
@@ -801,34 +803,27 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
         );
       })}
 
-      {resultLayer === 'footprints' && searchResults.map((item, index) => {
-        const isSelected = selectedFootprints.has(item.id);
-        if ((!isSelected && item.id !== hoveredItem) || !item.geometry) return null;
-        const color = isSelected ? highlightColor : brandColor;
-        const number = numberOffset + index + 1;
-        const iconKey = `${number}|${color}`;
-        let icon = chipIconCache.get(iconKey);
+      {focusedItem && searchResults.map(item => {
+        if (item.id !== focusedItem || !item.geometry) return null;
+        const position = getRepresentativePosition(item);
+        if (!position) return null;
+
+        const orderKey = item.properties?.order_key;
+        const label = orderKey === null || orderKey === undefined ? item.id : String(orderKey);
+        const iconKey = `${label}|${brandColor}|${theme.palette.getContrastText(brandColor)}`;
+        let icon = itemIdIconCache.get(iconKey);
         if (!icon) {
+          const safeLabel = escapeHtml(label);
           icon = L.divIcon({
-            className: 'stac-footprint-chip',
-            html: `<span style="background:${color};color:${theme.palette.getContrastText(color)}">${number}</span>`,
-            iconSize: [number >= 100 ? 32 : 24, 24],
+            className: 'stac-item-id-chip',
+            html: `<span title="${safeLabel}" style="background:${brandColor};color:${theme.palette.getContrastText(brandColor)}">${safeLabel}</span>`,
+            iconSize: [Math.min(340, Math.max(72, label.length * 7 + 20)), 32],
+            iconAnchor: [-8, 16],
           });
-          chipIconCache.set(iconKey, icon);
+          itemIdIconCache.set(iconKey, icon);
         }
-        return (
-          <Marker
-            key={`chip-${item.id}-${index}-${isSelected}`}
-            position={L.geoJSON(item).getBounds().getCenter()}
-            icon={icon}
-            interactive={isSelected}
-            eventHandlers={{
-              click: () => onFeatureClick?.(item.id),
-              mouseover: () => onHoverItem?.(item.id),
-              mouseout: () => onHoverItem?.(null),
-            }}
-          />
-        );
+
+        return <Marker key={`focused-item-${item.id}`} position={position} icon={icon} interactive={false} zIndexOffset={1000} />;
       })}
 
       {Object.entries(activeThumbnails).map(([id, url]) => {

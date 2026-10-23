@@ -183,9 +183,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     currentPage: number;
     totalDiscoveredPages: number;
   }>({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
-  // Limit used by the active search, so later changes to the setting don't shift result numbering.
+  // Limit used by the active search when counting items discovered across pages.
   const [pageSize, setPageSize] = useState(searchLimit);
-  const resultNumberOffset = (pagingState.currentPage - 1) * pageSize;
   const [discovered, setDiscovered] = useState({ count: 0, hasMore: false });
 
   /**
@@ -310,6 +309,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * @param item The result item to zoom to
    */
   const handleZoom =  (item: STACItem) => {
+    setFocusedItem(item.id);
     if(isMobile) {
       setRightOpen(false);
     }
@@ -764,8 +764,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             } 
           }}>
             <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
-              searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
-              hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
+              searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} focusedItem={focusedItem}
+              hoveredItem={hoveredItem} onHoverItem={setHoveredItem}
               activeThumbnails={activeThumbnails} setBbox={setBbox}
             />
             {isMobile && !leftOpen && !rightOpen && (
@@ -786,7 +786,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               onProcessCart={() => { setOpenBlind('processing'); setIsAuthOpen(false); }}
               isSearching={isSearching} selectedFootprints={selectedFootprints}
               onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
-              hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
+              hoveredItem={hoveredItem} onHoverItem={setHoveredItem}
               activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onClear={handleOnResultsClear}
               hasNext={pagingState.hasNext} hasPrevious={pagingState.hasPrevious} 
               currentPage={pagingState.currentPage} totalDiscoveredPages={pagingState.totalDiscoveredPages} 
