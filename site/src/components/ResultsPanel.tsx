@@ -15,6 +15,7 @@ import {
   Button,
   ButtonGroup,
   Badge,
+  FormControlLabel,
   Table,
   TableBody,
   TableCell,
@@ -59,6 +60,7 @@ import TableRowsIcon from "@mui/icons-material/TableRows";
 import ImageIcon from "@mui/icons-material/Image";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import HideImageIcon from "@mui/icons-material/HideImage";
 import ScienceIcon from "@mui/icons-material/Science";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
@@ -198,6 +200,8 @@ interface ResultsPanelProps {
   selectedFootprints: ReadonlySet<string>;
   /** Callback fired when a user checks/unchecks an item's footprint box */
   onToggleFootprint: (item: STACItem) => void;
+  /** Callback to select or deselect all items on the current page */
+  onSetPageSelection: (items: STACItem[], selected: boolean) => void;
   /** Callback fired to empty the cart (uncheck every item) */
   onClearCart: () => void;
   /** The ID of the item currently clicked/focused on the map */
@@ -210,6 +214,8 @@ interface ResultsPanelProps {
   activeThumbnails: Record<string, string>;
   /** Callback fired when a user toggles the image overlay button */
   onToggleThumbnail: (id: string, url: string | undefined) => void;
+  /** Callback to remove thumbnail overlays for the current page */
+  onRemovePageThumbnails: (items: STACItem[]) => void;
   /** Callback fired to clear all results */
   onClear: () => void;
 
@@ -255,12 +261,14 @@ export default function ResultsPanel({
   isSearching,
   selectedFootprints,
   onToggleFootprint,
+  onSetPageSelection,
   onClearCart,
   focusedItem,
   hoveredItem,
   onHoverItem,
   activeThumbnails,
   onToggleThumbnail,
+  onRemovePageThumbnails,
   onClear,
   hasNext,
   hasPrevious,
@@ -284,6 +292,9 @@ export default function ResultsPanel({
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
+  const selectedPageItemCount = results.filter(item => selectedFootprints.has(item.id)).length;
+  const allPageItemsSelected = results.length > 0 && selectedPageItemCount === results.length;
+  const hasPageThumbnails = results.some(item => Boolean(activeThumbnails[item.id]));
   const { t, orders, isOrderingSupported, triggerNewOrder, expireOrder, stacEndpoint, authToken, getValidAuthToken } = useContext(AppContext)!;
 
   
@@ -1015,8 +1026,32 @@ export default function ResultsPanel({
       }}>
         <TableHead>
           <TableRow>
-            <TableCell padding="checkbox" />
-            <TableCell padding="checkbox" />
+            <TableCell padding="checkbox" sx={{ borderLeft: "4px solid transparent" }}>
+              <Tooltip title={t("selectAllOnPage")}>
+                <Checkbox
+                  size="small"
+                  checked={allPageItemsSelected}
+                  indeterminate={selectedPageItemCount > 0 && !allPageItemsSelected}
+                  onChange={(_, checked) => onSetPageSelection(results, checked)}
+                  slotProps={{ input: { "aria-label": t("selectAllOnPage") } }}
+                  sx={{ p: 0.25, "&.Mui-checked": { color: highlightColor } }}
+                />
+              </Tooltip>
+            </TableCell>
+            <TableCell padding="checkbox">
+              <Tooltip title={t("removePageThumbnails")}>
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!hasPageThumbnails}
+                    aria-label={t("removePageThumbnails")}
+                    onClick={() => onRemovePageThumbnails(results)}
+                  >
+                    <HideImageIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </TableCell>
             <TableCell padding="checkbox" aria-label={t("actions")} />
             {dateKey && sortCell(dateKey, columnLabel(dateKey), dateKey)}
             {sortCell("id", t("itemId"))}
@@ -1046,7 +1081,7 @@ export default function ResultsPanel({
                   "&:focus-visible": { outline: `2px solid ${brandColor}`, outlineOffset: -2 },
                   bgcolor: isFocused ? alpha(brandColor, 0.1) : isSelected ? alpha(highlightColor, 0.12) : isHovered ? alpha(itemColor, 0.12) : undefined,
                   "& > td": isHighlighted ? { borderTop: `2px solid ${brandColor}`, borderBottom: `2px solid ${brandColor}` } : undefined,
-                  "& > td:first-of-type": { borderLeft: isHighlighted ? `2px solid ${brandColor}` : `4px solid ${itemColor}` },
+                  "& > td:first-of-type": { borderLeft: `4px solid ${isHighlighted ? brandColor : "transparent"}` },
                   "& > td:last-of-type": isHighlighted ? { borderRight: `2px solid ${brandColor}` } : undefined,
                 }}
               >
@@ -1203,6 +1238,31 @@ export default function ResultsPanel({
           <Tooltip title={t("emptyCartHover")}>
             <Button size="small" onClick={onClearCart} sx={{ ml: 'auto' }}>{t("clear")}</Button>
           </Tooltip>
+        </Box>
+      )}
+
+      {view === "cards" && !isSearching && results.length > 0 && (
+        <Box sx={{ px: 1.5, py: 0.25, display: "flex", alignItems: "center", borderBottom: 1, borderColor: "divider" }}>
+          <FormControlLabel
+            sx={{ mr: "auto", "& .MuiFormControlLabel-label": { fontSize: 12 } }}
+            control={(
+              <Checkbox
+                size="small"
+                checked={allPageItemsSelected}
+                indeterminate={selectedPageItemCount > 0 && !allPageItemsSelected}
+                onChange={(_, checked) => onSetPageSelection(results, checked)}
+                slotProps={{ input: { "aria-label": t("selectAllOnPage") } }}
+              />
+            )}
+            label={t("selectAllOnPage")}
+          />
+          {hasPageThumbnails && (
+            <Tooltip title={t("removePageThumbnails")}>
+              <IconButton size="small" aria-label={t("removePageThumbnails")} onClick={() => onRemovePageThumbnails(results)}>
+                <HideImageIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       )}
 
@@ -1411,7 +1471,7 @@ export default function ResultsPanel({
                 <span>
                   <Button aria-label={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}
                     disabled={isSearching || loadedResults.length === 0} onClick={handleExportResults}>
-                    <Badge badgeContent={loadedResults.length.toLocaleString()} color="secondary"
+                    <Badge badgeContent={loadedResults.length.toLocaleString()} max={Number.MAX_SAFE_INTEGER} color="secondary"
                       sx={{ mr: loadedResults.length >= 1000 ? 1.5 : 0.5, "& .MuiBadge-badge": { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}>
                       <DownloadIcon fontSize="small" />
                     </Badge>

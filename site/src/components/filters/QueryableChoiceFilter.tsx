@@ -47,12 +47,12 @@ const QueryableChoiceFilter: React.FC<QueryableChoiceFilterProps> = ({
   return (
     <Box sx={{ display: "flex", flexDirection: "row", alignItems: "flex-end", maxWidth: 576 }}>
       <FormControl variant="outlined" size="small" sx={{ width: "75vw", maxWidth: 566 }}>
-        <InputLabel shrink id={`${filterData.id}-choice-label`}>{t("value")}</InputLabel>
+        <InputLabel shrink id={`${filterData.id}-choice-label`}>{queryable.title || filterData.fieldKey}</InputLabel>
         <Select
           labelId={`${filterData.id}-choice-label`}
           value={selectedIndex < 0 ? "" : String(selectedIndex)}
           onChange={handleChange}
-          label={t("value")}
+          label={queryable.title || filterData.fieldKey}
           displayEmpty
         >
           <MenuItem value="">{t("any")}</MenuItem>

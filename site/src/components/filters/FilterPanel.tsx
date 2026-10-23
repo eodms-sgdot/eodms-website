@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { AppContext } from "../../AppContext";
-import { Accordion, AccordionDetails, AccordionSummary, Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, Link, Tooltip, Typography } from "@mui/material";
+import { Accordion, AccordionDetails, AccordionSummary, Box, Button, CircularProgress, IconButton, Link, TextField, Tooltip, Typography } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { FilterValue, STACCollection, STACQueryable} from "../../types";
@@ -215,9 +215,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                                 !queryable ? (
                                                     <Typography key={`${collectionName}-queryable-${qName}`} sx={{fontSize:'small'}}>{t('noFilters')}</Typography>
                                                 ) : qName === 'geometry_valid' ? (
-                                                    <Box key={`${collectionName}-queryable-${qName}`} sx={{ display: 'flex', flexDirection: 'column', mt: 1, mb: 1 }}>
-                                                        <Typography variant="body2">{queryable.title || qName}</Typography>
-                                                        <FormControlLabel control={<Checkbox checked disabled size="small" />} label={t('trueValue')} />
+                                                    <Box key={`${collectionName}-queryable-${qName}`} sx={{ mt: 0.5, mb: 0.5, width: '75vw', maxWidth: 576 }}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <Box sx={{ width: '25vw', maxWidth: 182, flexShrink: 0 }} />
+                                                        <TextField
+                                                            disabled
+                                                            size="small"
+                                                            label={queryable.title || qName}
+                                                            value={t('trueValue')}
+                                                            sx={{ width: '50vw', maxWidth: 374 }}
+                                                        />
+                                                        </Box>
                                                     </Box>
                                                 ) : (
                                                     <FilterWidget

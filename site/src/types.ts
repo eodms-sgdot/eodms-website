@@ -24,6 +24,11 @@ export interface STACCollection {
   title?: string;
   description: string;
   links: { rel: string; href: string, type: string }[];
+  extent?: {
+    temporal?: {
+      interval?: Array<[string | null, string | null]>;
+    };
+  };
 }
 
 export interface STACQueryable {

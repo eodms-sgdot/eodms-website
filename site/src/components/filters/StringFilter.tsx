@@ -115,7 +115,7 @@ const StringFilter: React.FC<StringFilterProps> = ({
 
       <TextField
         size="small"
-        label={t('value')}
+        label={queryable.title || filterData.fieldKey}
         variant="outlined"
         value={localValue}
         onChange={handleFilterValueChange}

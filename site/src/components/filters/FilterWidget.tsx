@@ -63,6 +63,12 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
     updateFilterHandler
 }) => {
     const queryableKey = `${qName}-${JSON.stringify(queryable)}`;
+    const queryableType = Array.isArray(queryable.type)
+        ? queryable.type.find(typeName => typeName !== 'null')
+        : queryable.type;
+    const isDateTime = queryableType === 'datetime'
+        || (queryableType === 'string' && (queryable.format === 'date-time' || queryable.contentEncoding === 'date-time'));
+    const fieldTitle = queryable.title || qName;
 
     /**
      * Selects the Filter element type to be displayed for a given FilterValue
@@ -71,10 +77,6 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
      * @returns 
      */
     const getFilterForField = (filterValue: FilterValue) => {
-        const queryableType = Array.isArray(queryable.type)
-            ? queryable.type.find(typeName => typeName !== 'null')
-            : queryable.type;
-
         if (queryable.enum?.length || queryableType === 'boolean') {
             return (
                 <QueryableChoiceFilter
@@ -117,8 +119,7 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
                     updateFilterHandler={updateFilterHandler}
                 />
             );
-        } else if (queryableType === 'datetime' || (queryableType === 'string' && queryable.format && queryable.format === 'date-time')
-            || (queryableType === 'string' && queryable.contentEncoding && queryable.contentEncoding === 'date-time')) {
+        } else if (isDateTime) {
 
             return (
                 <DateTimeFilter
@@ -139,7 +140,7 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
     const fields = filterData.map(getFilterForField).filter(Boolean);
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', mt: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', mt: 0.5 }}>
             {fields.map((field) => (
                 <Box
                     key={qName}
@@ -147,15 +148,13 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'left',
-                        gap: 1,
-                        mb: 1,
+                        gap: 0.5,
+                        mb: 0.5,
                         width: '75vw',
                         maxWidth:576
                     }}
                 >
-                    <Box sx={{display:'flex', flexDirection: 'row'}}>
-                        <Typography variant="body2">{queryable.title ? queryable.title : qName}</Typography>
-                    </Box>
+                    {isDateTime && <Typography variant="body2">{fieldTitle}</Typography>}
 
                     {/* Filter Input */}
                     <Box sx={{ flexGrow: 1 }} >

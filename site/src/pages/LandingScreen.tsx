@@ -42,8 +42,14 @@ import { NAPL_SEARCH_LOADERS, SEARCH_LOADERS } from '../components/searchLoaderL
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 import { isStagingEndpoint } from '../utils/StagingUtils';
+import { fields } from '../session';
 
 const DRAWER_WIDTH = 320;
+const MIN_RESULTS_WIDTH = 320;
+const MAX_RESULTS_WIDTH = 640;
+const MIN_MAP_WIDTH = 320;
+const PANEL_RESIZE_BREAKPOINT = DRAWER_WIDTH + MIN_RESULTS_WIDTH + MIN_MAP_WIDTH;
+const SORT_OPTIONS = new Set(['', '-datetime', '+datetime']);
 // Matches useIsMobile's default so the first render agrees with it.
 const MOBILE_BREAKPOINT = 768;
 
@@ -76,6 +82,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches);
   const [rightOpen, setRightOpen] = useState(false);
+  const [resultsWidth, setResultsWidth] = useState(MIN_RESULTS_WIDTH);
+  const [isResizingResults, setIsResizingResults] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
   const [loadedResults, setLoadedResults] = useState<STACItem[]>([]);
   const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
@@ -104,19 +112,43 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [clearAoiTrigger, setClearAoiTrigger] = useState(0);
   const [supportsSearch, setSupportsSearch] = useState<boolean>(false);
   const [supportsSorting, setSupportsSorting] = useState<boolean>(false);
-  const [sortby, setSortby] = useState<string>('-datetime');
+  const [sortby, setSortby] = useState<string>(() => {
+    const savedSort = localStorage.getItem(fields.sortBy);
+    return savedSort !== null && SORT_OPTIONS.has(savedSort) ? savedSort : '-datetime';
+  });
+
+  useEffect(() => {
+    localStorage.setItem(fields.sortBy, sortby);
+  }, [sortby]);
 
   const isMobile = useIsMobile(MOBILE_BREAKPOINT);
+
+  const getAvailableLayoutWidth = () => contentEl?.clientWidth ?? window.innerWidth;
+  const canShowBothSidePanels = () => getAvailableLayoutWidth() >= PANEL_RESIZE_BREAKPOINT;
+  const getMaxResultsWidth = (showLeft = leftOpen) => {
+    const availableWidth = getAvailableLayoutWidth();
+    const leftWidth = !isMobile && showLeft ? DRAWER_WIDTH : 0;
+    return Math.max(MIN_RESULTS_WIDTH, Math.min(
+      MAX_RESULTS_WIDTH,
+      Math.floor(availableWidth * 0.45),
+      availableWidth - leftWidth - MIN_MAP_WIDTH,
+    ));
+  };
+  const clampResultsWidth = (width: number) =>
+    Math.max(MIN_RESULTS_WIDTH, Math.min(width, getMaxResultsWidth()));
 
   // On phones each panel fills the screen, so only one is open at a time.
   const showLeftPanel = (open: boolean) => {
     setLeftOpen(open);
-    if (open && isMobile) setRightOpen(false);
+    if (open && (isMobile || !canShowBothSidePanels())) setRightOpen(false);
   };
   const showRightPanel = (open: boolean) => {
     setRightOpen(open);
-    if (open && isMobile) setLeftOpen(false);
+    if (open && (isMobile || !canShowBothSidePanels())) setLeftOpen(false);
   };
+  const calcResultsDrawerWidth = (): number | string => isMobile
+    ? '100%'
+    : Math.min(resultsWidth, getMaxResultsWidth());
   const firstName = username?.trim().split(/\s+/)[0];
   const endpointMap = import.meta.env.VITE_EODMS_ENDPOINTS;
   const directStacEndpoint = /^https?:\/\//i.test(stacEndpoint);
@@ -176,6 +208,25 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     const timer = setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 300);
     return () => clearTimeout(timer);
   }, [leftOpen, rightOpen]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const availableWidth = contentEl?.clientWidth ?? window.innerWidth;
+      const closeLeftPanel = !isMobile && leftOpen && rightOpen && availableWidth < PANEL_RESIZE_BREAKPOINT;
+      if (closeLeftPanel) setLeftOpen(false);
+      if (!isMobile && rightOpen) {
+        const leftWidth = leftOpen && !closeLeftPanel ? DRAWER_WIDTH : 0;
+        const maxWidth = Math.max(MIN_RESULTS_WIDTH, Math.min(
+          MAX_RESULTS_WIDTH,
+          Math.floor(availableWidth * 0.45),
+          availableWidth - leftWidth - MIN_MAP_WIDTH,
+        ));
+        setResultsWidth(width => Math.min(width, maxWidth));
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [contentEl, isMobile, leftOpen, rightOpen]);
 
   const [pagingState, setPagingState] = useState<{
     hasNext: boolean;
@@ -303,6 +354,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     });
   };
 
+  const handleSetPageSelection = (items: STACItem[], selected: boolean) => {
+    setSelectedFootprints(previous => {
+      const next = new Set(previous);
+      items.forEach(item => selected ? next.add(item.id) : next.delete(item.id));
+      return next;
+    });
+  };
+
   /**
    * Updates the zoomBounds, causing the map to zoom to those coordinates
    * Also closes the Results panel if the App is being viewed via a mobile device
@@ -371,6 +430,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
           setRightOpen(false);
         }
       }
+      return next;
+    });
+  };
+
+  const handleRemovePageThumbnails = (items: STACItem[]) => {
+    setActiveThumbnails(previous => {
+      const next = { ...previous };
+      items.forEach(item => { delete next[item.id]; });
       return next;
     });
   };
@@ -716,7 +783,11 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       </AppBar>
 
       <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={cancelSearch} cancelText={t('cancel')}>
-        <Box ref={setContentEl} sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative' }}>
+        <Box ref={setContentEl} sx={{
+          display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative',
+          cursor: isResizingResults ? 'col-resize' : undefined,
+          userSelect: isResizingResults ? 'none' : undefined,
+        }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
               stacEndpoint={stacEndpoint} fixedCollectionId={experience.fixedCollectionId}
@@ -780,14 +851,15 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               </Fab>
             )}
           </Box>
-          <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
+          <Drawer variant="persistent" anchor="right" open={rightOpen} sx={{width: rightOpen ? calcResultsDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcResultsDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, -4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <ResultsPanel 
               results={searchResults} loadedResults={loadedResults} onClose={() => setRightOpen(false)} onZoom={handleZoom} onZoomToResults={handleZoomToResults}
               onProcessCart={() => { setOpenBlind('processing'); setIsAuthOpen(false); }}
               isSearching={isSearching} selectedFootprints={selectedFootprints}
-              onToggleFootprint={handleToggleFootprint} onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem} 
+              onToggleFootprint={handleToggleFootprint} onSetPageSelection={handleSetPageSelection}
+              onClearCart={() => setSelectedFootprints(new Set())} focusedItem={focusedItem}
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem}
-              activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onClear={handleOnResultsClear}
+              activeThumbnails={activeThumbnails} onToggleThumbnail={handleToggleThumbnail} onRemovePageThumbnails={handleRemovePageThumbnails} onClear={handleOnResultsClear}
               hasNext={pagingState.hasNext} hasPrevious={pagingState.hasPrevious} 
               currentPage={pagingState.currentPage} totalDiscoveredPages={pagingState.totalDiscoveredPages} 
               onNextPage={handleNextPage} onPreviousPage={handlePreviousPage} onGoToPage={handleGoToPage} 
@@ -795,6 +867,79 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               experienceId={experience.id}
             />
           </Drawer>
+          {rightOpen && !isMobile && (
+            <Box
+              role="separator"
+              aria-label={t('resizeResultsPanel')}
+              aria-orientation="vertical"
+              aria-valuemin={MIN_RESULTS_WIDTH}
+              aria-valuemax={getMaxResultsWidth()}
+              aria-valuenow={Math.min(resultsWidth, getMaxResultsWidth())}
+              tabIndex={0}
+              title={t('resizeResultsPanel')}
+              onKeyDown={event => {
+                const step = event.shiftKey ? 64 : 16;
+                if (event.key === 'ArrowLeft') {
+                  event.preventDefault();
+                  setResultsWidth(width => clampResultsWidth(width + step));
+                } else if (event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  setResultsWidth(width => clampResultsWidth(width - step));
+                } else if (event.key === 'Home') {
+                  event.preventDefault();
+                  setResultsWidth(MIN_RESULTS_WIDTH);
+                } else if (event.key === 'End') {
+                  event.preventDefault();
+                  setResultsWidth(getMaxResultsWidth());
+                }
+              }}
+              onPointerDown={event => {
+                event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setIsResizingResults(true);
+              }}
+              onPointerMove={event => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const bounds = contentEl?.getBoundingClientRect();
+                if (bounds) setResultsWidth(clampResultsWidth(bounds.right - event.clientX));
+              }}
+              onPointerUp={event => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+                setIsResizingResults(false);
+              }}
+              onPointerCancel={() => setIsResizingResults(false)}
+              sx={{
+                position: 'absolute',
+                left: `calc(100% - ${calcResultsDrawerWidth()}px)`,
+                top: 0,
+                bottom: 0,
+                width: 14,
+                transform: 'translateX(-100%)',
+                zIndex: 1201,
+                cursor: 'col-resize',
+                touchAction: 'none',
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  width: 4,
+                  height: 48,
+                  transform: 'translate(-50%, -50%)',
+                  borderRadius: 2,
+                  bgcolor: isResizingResults ? 'primary.main' : 'text.disabled',
+                  transition: 'background-color 120ms ease, width 120ms ease',
+                },
+                '&:hover::after, &:focus-visible::after, &:active::after': {
+                  width: 6,
+                  bgcolor: 'primary.main',
+                },
+                '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 1 },
+              }}
+            />
+          )}
         </Box>
       </LoadingMask>
 

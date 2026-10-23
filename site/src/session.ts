@@ -14,6 +14,7 @@ export const fields = {
     searchTemporal: "searchTemporal",
     searchStartDate: "searchStartDate",
     searchEndDate: "searchEndDate",
+    sortBy: "sortBy",
     locationSearchProvider: "search-provider",
 
     username: "username",

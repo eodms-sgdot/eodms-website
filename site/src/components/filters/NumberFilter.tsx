@@ -129,7 +129,7 @@ const NumberFilter: React.FC<NumberFilterProps> = ({
         </FormControl>
         <TextField
             size="small"
-            label={t('value')}
+            label={queryable.title || filterData.fieldKey}
             variant="outlined"
             value={localValue}
             slotProps={{ htmlInput: {min: minimum,  max: maximum} }}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge, Alert } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
@@ -54,6 +54,60 @@ export interface SearchPanelProps {
   executeSearch: () => void;
 }
 
+const getCollectionDateRange = (collection: STACCollection, t: (key: TranslationKey) => string) => {
+  const intervals = collection.extent?.temporal?.interval;
+  if (!intervals?.length) return null;
+
+  const formatYear = (date: string) => Date.parse(date) > Date.now() ? t('present') : date.slice(0, 4);
+  const ranges = intervals.map(([start, end]) => {
+    if (!start && !end) return `(${t('anytime')})`;
+    return `(${start ? formatYear(start) : '...'} - ${end ? formatYear(end) : t('present')})`;
+  });
+  return ranges.join('; ');
+};
+
+interface CollectionTimelineScale {
+  start: number;
+  end: number;
+  present: number;
+}
+
+const getCollectionTimelineScale = (collections: STACCollection[]): CollectionTimelineScale | null => {
+  const present = Date.now();
+  const intervals = collections.flatMap(collection => collection.extent?.temporal?.interval ?? [])
+    .map(([start, end]) => ({
+      start: start === null ? null : Math.min(Date.parse(start), present),
+      end: end === null ? null : Math.min(Date.parse(end), present),
+    }))
+    .filter(interval =>
+      (interval.start === null || Number.isFinite(interval.start)) &&
+      (interval.end === null || Number.isFinite(interval.end)),
+    );
+  if (intervals.length === 0) return null;
+
+  const starts = intervals.flatMap(({ start }) => start === null ? [] : [start]);
+  const ends = intervals.flatMap(({ end }) => end === null ? [] : [end]);
+  const start = starts.length ? Math.min(...starts) : ends.length ? Math.min(...ends) : present - 365 * 24 * 60 * 60 * 1000;
+  const end = Math.max(start, ...ends, ...(intervals.some(interval => interval.end === null) ? [present] : []));
+  if (end === start && end === present) {
+    return { start: start - 365 * 24 * 60 * 60 * 1000, end, present };
+  }
+  return { start, end: end === start ? start + 365 * 24 * 60 * 60 * 1000 : end, present };
+};
+
+const getCollectionTimelineSegments = (collection: STACCollection, scale: CollectionTimelineScale) => {
+  const duration = scale.end - scale.start;
+  return (collection.extent?.temporal?.interval ?? []).flatMap(([start, end]) => {
+    const startTime = start === null ? scale.start : Math.min(Date.parse(start), scale.present);
+    const endTime = end === null ? scale.present : Math.min(Date.parse(end), scale.present);
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return [];
+
+    const left = Math.max(0, Math.min(100, ((startTime - scale.start) / duration) * 100));
+    const right = Math.max(left, Math.min(100, ((endTime - scale.start) / duration) * 100));
+    return [{ left, width: Math.max(0.5, right - left) }];
+  });
+};
+
 /**
  * Sidebar component that fetches available STAC collections and provides 
  * form controls for filtering searches by temporal extent and pagination limits.
@@ -67,6 +121,7 @@ export default function SearchPanel({
 }: SearchPanelProps) {
   
   const [collections, setCollections] = useState<STACCollection[]>([]);
+  const timelineScale = useMemo(() => getCollectionTimelineScale(collections), [collections]);
   const [loading, setLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<{ key: TranslationKey; status?: number } | null>(null);
   const {
@@ -327,9 +382,19 @@ export default function SearchPanel({
           }}
         >
           <FormGroup>
-            {collections.map((c) => (
-              <Tooltip key={c.id} title={c.description || c.title || c.id}>
+            {collections.map((c) => {
+              const dateRange = getCollectionDateRange(c, t);
+              const timelineSegments = timelineScale ? getCollectionTimelineSegments(c, timelineScale) : [];
+              return <Tooltip key={c.id} title={c.description || c.title || c.id}>
                 <FormControlLabel
+                  sx={{
+                    alignItems: 'flex-start',
+                    width: '100%',
+                    minWidth: 0,
+                    mr: 0,
+                    '& .MuiFormControlLabel-label': { minWidth: 0, flex: '1 1 auto' },
+                    '& .MuiCheckbox-root': { pt: '2px' },
+                  }}
                   control={
                     <Checkbox
                       size="small"
@@ -338,11 +403,41 @@ export default function SearchPanel({
                     />
                   }
                   label={
-                    <Typography variant="body2">{c.title || c.id}</Typography>
+                    <Box sx={{ width: '100%', minWidth: 0, py: 0.25 }}>
+                      <Typography component="span" variant="body2" title={c.title || c.id}>
+                        {c.title || c.id}
+                      </Typography>
+                      {(timelineSegments.length > 0 || dateRange) && (
+                        <Box sx={{ mt: 0.35, mb: 0.25 }}>
+                          {timelineSegments.length > 0 && (
+                            <Box
+                              role="img"
+                              aria-label={`${c.title || c.id}: ${dateRange}`}
+                              sx={{ position: 'relative', height: 7, borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden', pointerEvents: 'none' }}
+                            >
+                          {timelineSegments.map((segment, index) => (
+                            <Box
+                              key={`${c.id}-temporal-segment-${index}`}
+                              sx={{
+                                position: 'absolute',
+                                left: `${segment.left}%`,
+                                width: `${segment.width}%`,
+                                top: 0,
+                                bottom: 0,
+                                backgroundImage: 'repeating-linear-gradient(135deg, rgba(96,125,139,0.85) 0px, rgba(96,125,139,0.85) 2px, transparent 2px, transparent 5px)',
+                              }}
+                            />
+                          ))}
+                            </Box>
+                          )}
+                          {dateRange && <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.2, color: 'text.disabled' }}>{dateRange}</Typography>}
+                        </Box>
+                      )}
+                    </Box>
                   }
                 />
-              </Tooltip>
-            ))}
+              </Tooltip>;
+            })}
           </FormGroup>
         </Box>
       ) : null}
