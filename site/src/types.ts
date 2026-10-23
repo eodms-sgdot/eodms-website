@@ -54,9 +54,7 @@ export interface Duration {
   duration: string;
 }
 
-export interface FilterDate {
-  date: string;
-}
+export type FilterDate = string | null;
 
 export interface FilterValue {
   id: string;

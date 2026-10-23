@@ -9,6 +9,7 @@
     "build:ccmeo": "tsc -b && vite build --base=/site",
     "prod": "tsc --noEmit --skipLibCheck && vite build",
     "lint": "eslint .",
+    "test:dates": "node --test tests/PartialDates.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
+    "@internationalized/date": "^3.10.0",
     "@turf/meta": "^7.3.5",
     "@turf/turf": "^7.3.5",
     "axios": "^1.16.0",
@@ -25,11 +27,13 @@
     "leaflet-draw": "^1.0.4",
     "leaflet-geosearch": "^4.4.0",
     "react": "^19.2.5",
+    "react-aria": "^3.44.0",
     "react-dom": "^19.2.5",
     "react-esri-leaflet": "^3.0.1",
     "react-leaflet": "^5.0.0",
     "react-leaflet-rotated-imageoverlay": "^1.0.3",
-    "react-router-dom": "^7.15.0"
+    "react-router-dom": "^7.15.0",
+    "react-stately": "^3.42.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

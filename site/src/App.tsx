@@ -6,6 +6,7 @@ import { darkMode, lightMode, type DisplayMode } from './theme';
 import { getTranslation, type Language } from './i18n';
 import LandingScreen from './pages/LandingScreen';
 import AnimationsScreen from './pages/AnimationsScreen';
+import DateFieldPrototype from './pages/DateFieldPrototype';
 import type { FilterValue } from './types';
 import { getBaseMap, type BaseMap, type BaseMapId } from './basemaps';
 import { fields } from './session';
@@ -328,6 +329,7 @@ export default function App() {
               ? <LandingScreen experience={naplExperience} />
               : <Navigate to="/" replace />} />
             <Route path="/animations" element={<AnimationsScreen />} />
+            {import.meta.env.DEV && <Route path="/date-prototype" element={<DateFieldPrototype />} />}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </HashRouter>

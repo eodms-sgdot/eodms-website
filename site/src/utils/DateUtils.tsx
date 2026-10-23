@@ -8,12 +8,9 @@ export const formatStacDate = (date: Date): string => {
     return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 };
 
-export const formatDateTimeLocalAsStac = (value: string): string =>
-    formatStacDate(new Date(value));
-
 export const formatStacDateAsLocalInput = (date: Date): string => {
     const pad = (value: number) => value.toString().padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
 /**

@@ -318,6 +318,7 @@ export default function SearchPanel({
             display: "flex",
             flexDirection: "column",
             overflowY: "auto",
+            minHeight: 120,
             p: 2,
           }}
         >
@@ -353,19 +354,15 @@ export default function SearchPanel({
       </Button>
 
       <Box sx={{ mt: "auto", display: "flex", flexDirection: "column", gap: 2, p:2 }}>
-        <Tooltip title={t('temporalExtent')}>
-          <Box> {/* box needed to add tooltip to date picker */}
-            <DatePicker
-              searchTemporal={searchTemporal}
-              setSearchTemporal={setSearchTemporal}
-              startDate={startDate}
-              setStartDate={setStartDate}
-              endDate={endDate}
-              setEndDate={setEndDate}
-              onChange={() => {}}
-            />
-          </Box>
-        </Tooltip>
+        <DatePicker
+          searchTemporal={searchTemporal}
+          setSearchTemporal={setSearchTemporal}
+          startDate={startDate}
+          setStartDate={setStartDate}
+          endDate={endDate}
+          setEndDate={setEndDate}
+          onChange={() => {}}
+        />
 
         {supportsSorting && (
           <FormControl fullWidth size="small" disabled={selectedCollections.length > 1}>

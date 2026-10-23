@@ -1,5 +1,6 @@
-import type { FilterDate, FilterValue} from "../types";
+import type { FilterValue} from "../types";
 import { createDateRange } from "./DateUtils";
+import { customDateRange, DateSearchError } from "./PartialDates";
 
 const TEMPORAL_FILTER_FIELDS = new Set(["datetime", "start_datetime", "end_datetime"]);
 
@@ -16,7 +17,13 @@ export const buildFilter = (filters: FilterValue[]): string => {
         return '';
     }
 
-    const applicableFilters = filters.filter(filterValue => !isTemporalFilterField(filterValue.fieldKey));
+    const applicableFilters = filters.filter(filterValue => {
+        if (isTemporalFilterField(filterValue.fieldKey)) return false;
+        if (filterValue.type === 'date-range' && Array.isArray(filterValue.value)) {
+            return filterValue.value.some(value => value !== null && value !== '' && value !== '..');
+        }
+        return true;
+    });
     if (applicableFilters.length === 0) {
         return '';
     }
@@ -75,21 +82,19 @@ export const buildFilter = (filters: FilterValue[]): string => {
                 }
             }
             else if(type === 'date-range') {
-                const dates = value as unknown as FilterDate[]
-                const start = dates[0];
-                const end = dates[1];
-
-                tokens.push(filterValue.fieldKey);
-                tokens.push(' >= ');
-                tokens.push('TIMESTAMP(\'');
-                tokens.push(start.toString());
-                tokens.push('\')');
-                tokens.push(' AND ')
-                tokens.push(filterValue.fieldKey);
-                tokens.push(' <= ');
-                tokens.push('TIMESTAMP(\'');
-                tokens.push(end.toString());
-                tokens.push('\')');
+                if (!Array.isArray(value) || value.length !== 2 ||
+                    value.some(date => date !== null && typeof date !== 'string')) {
+                    throw new DateSearchError('invalidDateParts');
+                }
+                const range = customDateRange(String(value[0] ?? ''), String(value[1] ?? ''));
+                if (range) {
+                    const [start, end] = range.split('/');
+                    const clauses: string[] = [];
+                    if (start !== '..') clauses.push(`${filterValue.fieldKey} >= TIMESTAMP('${start}')`);
+                    if (end !== '..') clauses.push(`${filterValue.fieldKey} <= TIMESTAMP('${end}')`);
+                    tokens.push(clauses.join(' AND '));
+                    first = false;
+                }
             }            
         }
     });

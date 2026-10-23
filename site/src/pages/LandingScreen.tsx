@@ -14,7 +14,8 @@ import ResultsPanel from '../components/ResultsPanel';
 import AuthPanel from '../components/AuthPanel';
 import TermsOfUseDialog from '../components/TermsOfUseDialog';
 import type { STACCollection, STACItem } from '../types';
-import { createDateRange, formatDateTimeLocalAsStac } from '../utils/DateUtils';
+import { createDateRange } from '../utils/DateUtils';
+import { customDateRange, DateSearchError } from '../utils/PartialDates';
 import { buildFilter } from '../utils/FilterBuilder';
 import LoadingMask from '../components/masker/LoadingMask';
 import { StacSearchService } from '../services/StacSearchService';
@@ -393,6 +394,29 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       return;
     }
 
+    const params: StacSearchParams = {
+      ...(searchBbox && { bbox: searchBbox }),
+      collections: collectionIDs,
+      limit: searchLimit,
+      ...(selectedCollections.length <= 1 && {sortby}),
+    };
+
+    try {
+      if (searchTemporal === 'custom') {
+        params.datetime = customDateRange(searchStartDate, searchEndDate);
+      } else if (searchTemporal !== 'anytime') {
+        params.datetime = createDateRange(searchTemporal).join('/');
+      }
+      if (selectedCollections.length === 1) {
+        const filtersText = buildFilter(filters[collectionIDs[0]]);
+        if (filtersText) params.filter = filtersText;
+      }
+    } catch (error) {
+      if (!(error instanceof DateSearchError)) throw error;
+      setSearchError(t(error.translationKey));
+      return;
+    }
+
     const requestId = ++searchRequestId.current;
     setSearchError(null);
     setSearchResults([]);
@@ -401,42 +425,6 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     setActiveThumbnails({});
     setFocusedItem(null);
     setDiscovered({ count: 0, hasMore: false });
-
-    const params: StacSearchParams = {
-      ...(searchBbox && { bbox: searchBbox }),
-      collections: collectionIDs,
-      limit: searchLimit,
-      ...(selectedCollections.length <= 1 && {sortby}),
-    };
-
-    if (searchTemporal !== "anytime") {
-      let startStr = "..", endStr = "..";
-      if (searchTemporal === "custom") {
-        if (searchStartDate) {
-          startStr = formatDateTimeLocalAsStac(searchStartDate);
-        }
-        if (searchEndDate) {
-          endStr = formatDateTimeLocalAsStac(searchEndDate);
-        }
-
-      } else {
-          const dates = createDateRange(searchTemporal);
-          startStr = dates[0];
-          endStr = dates[1];
-        }
-
-        if (startStr !== ".." || endStr !== "..") {
-          params.datetime = `${startStr}/${endStr}`;
-        }
-    }
-
-    if (selectedCollections.length === 1) {
-      const collectionFilters = filters[collectionIDs[0]];
-      const filtersText = buildFilter(collectionFilters);
-      if (filtersText && filtersText.length > 0) {
-        params.filter = filtersText;
-      }
-    }
 
     setIsSearching(true);
     setSearchAnimation(previous => previous + 1);

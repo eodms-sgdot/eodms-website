@@ -56,6 +56,36 @@ the main experience.
 The app automatically shows the `PROXY` badge when running through the local
 Vite development server. No environment setting is needed.
 
+## Flexible Date Searches
+
+The custom date range uses React Aria's segmented date/time fields. Enter a
+year and optionally month, day, hour, minute, and second. Trailing blank parts
+set the precision; missing intermediate parts are invalid. A start year of
+`1985` and an end year of `1985` includes that entire year. Start/end endpoints
+expand to the beginning/end of the entered period, inclusive to the second.
+An entirely blank endpoint is open; two blank endpoints omit the date restriction.
+Dates use the browser's local timezone and are converted to UTC for STAC.
+Times skipped by daylight-saving changes show an error rather than being shifted.
+
+Day limits respect month lengths and leap years. Changing month/year clamps an
+existing day to the last valid day without filling any blank parts. The calendar
+sets year/month/day and preserves time parts, including blanks. Delete clears a
+segment; Backspace removes a digit. The inline info note explains these controls
+in English and French.
+
+Partial values persist with the existing search preferences, including missing
+intermediate parts so invalid input is not silently lost. Validation blocks
+invalid/reversed ranges before sending requests or clearing the previous results.
+Date-type collection filters share the same controls and endpoint normalization.
+Run `npm run test:dates` with Node.js 22.18+ for normalization regression tests.
+
+### Development preview
+
+Open `http://127.0.0.1:5173/#/date-prototype` to try React Aria's segmented
+date/time editing using the same shared control as search. Diagnostic values
+report unset parts as `null`. This preview makes no requests and does not persist
+dates. EN/FR and light/dark buttons use existing application preferences.
+
 ## NAPL Orders
 
 The NAPL basket stores separate order lines, including repeated catalog UUIDs.

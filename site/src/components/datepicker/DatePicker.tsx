@@ -1,6 +1,8 @@
-import { Box, FormControl, InputLabel, MenuItem, Select, TextField, type SelectChangeEvent } from "@mui/material"
-import { useContext } from "react";
+import { Alert, AlertTitle, Box, FormControl, FormHelperText, InputLabel, MenuItem, Select, type SelectChangeEvent } from "@mui/material"
+import { useContext, useId } from "react";
 import { AppContext } from "../../AppContext";
+import PartialDateField from "./PartialDateField";
+import { dateRangeError } from "../../utils/PartialDates";
 
 /**
  * The properties required to populate the DatePicker.
@@ -70,6 +72,10 @@ const DatePicker: React.FC<DatePickerProps> = ({
 }) => {
 
     const {t } = useContext(AppContext)!; 
+    const helpId = useId();
+    const errorId = useId();
+    const dateError = searchTemporal === 'custom' ? dateRangeError(startDate, endDate) : undefined;
+    const describedBy = [helpId, dateError ? errorId : ''].filter(Boolean).join(' ');
 
     /**
      * Handles a new 'temporal' value being selected
@@ -84,18 +90,18 @@ const DatePicker: React.FC<DatePickerProps> = ({
      * Handles a new startDate being selected
      * @param event 
      */
-    const startChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setStartDate(event.target.value);
-        onChange(event.target.value, 'startDate');
+    const startChange = (value: string) => {
+        setStartDate(value);
+        onChange(value, 'startDate');
     }
 
     /**
      * Handles a new endDate being selected
      * @param event 
      */
-    const endChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setEndDate(event.target.value);
-        onChange(event.target.value, 'endDate');
+    const endChange = (value: string) => {
+        setEndDate(value);
+        onChange(value, 'endDate');
     }
 
     return (
@@ -115,8 +121,25 @@ const DatePicker: React.FC<DatePickerProps> = ({
 
             {searchTemporal === 'custom' && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper' }}>
-                    <TextField label={t('startDate')} type="datetime-local" size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={startDate} onChange={startChange} />
-                    <TextField label={t('endDate')} type="datetime-local" size="small" fullWidth slotProps={{ inputLabel: { shrink: true } }} value={endDate} onChange={endChange} />
+                    <PartialDateField label={t('startDate')} value={startDate} onChange={startChange}
+                        error={!!dateError} describedBy={describedBy} />
+                    <PartialDateField label={t('endDate')} value={endDate} onChange={endChange}
+                        error={!!dateError} describedBy={describedBy} />
+                    {dateError && <FormHelperText id={errorId} error role="alert" sx={{ m: 0 }}>{t(dateError)}</FormHelperText>}
+                    <Alert severity="info" id={helpId} sx={{
+                        px: 1, py: 0.5, fontSize: '0.7rem', lineHeight: 1.35,
+                        '& .MuiAlert-message': { minWidth: 0, py: 0 },
+                        '& .MuiAlert-icon': { fontSize: 18, mr: 0.75, py: 0 },
+                    }}>
+                        <AlertTitle sx={{ fontSize: '0.75rem', lineHeight: 1.4, mb: 0.25 }}>{t('dateSearchTips')}</AlertTitle>
+                        <Box>{t('dateBriefHelp')}</Box>
+                        <Box component="details" sx={{ mt: 0.5 }}>
+                            <Box component="summary" sx={{ cursor: 'pointer' }}>{t('dateEntryHelp')}</Box>
+                            <Box sx={{ my: 1 }}>{t('datePartialHelp')}</Box>
+                            <Box sx={{ mb: 1 }}>{t('dateKeyboardHelp')}</Box>
+                            <Box>{t('dateCalendarHelp')}</Box>
+                        </Box>
+                    </Alert>
                 </Box>
             )}
         </Box>
