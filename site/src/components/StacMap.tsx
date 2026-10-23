@@ -30,7 +30,8 @@ const ARCTIC_GRID_BOUNDS = L.bounds(
   L.point(4889334.802955, 4889334.802955)
 );
 const ARCTIC_GRID_RESOLUTIONS = Array.from(
-  { length: 11 },
+  // Extend the CRS for overzoom; WMTS requests remain capped at native level 10.
+  { length: 19 },
   (_, zoom) => 136421171.96428573 * 0.00028 / (2 ** zoom)
 );
 const ARCTIC_CRS = new L.Proj.CRS(
@@ -175,7 +176,7 @@ function fitMapBounds(map: L.Map, bounds: L.LatLngBounds) {
   const size = projectedBounds.getSize();
   const available = map.getSize().subtract([100, 100]);
   const scale = Math.min(Math.max(1, available.x) / size.x, Math.max(1, available.y) / size.y);
-  const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), Math.floor(ARCTIC_CRS.zoom(scale * ARCTIC_CRS.scale(0)))));
+  const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), ARCTIC_CRS.zoom(scale * ARCTIC_CRS.scale(0))));
   map.setView(map.unproject(projectedBounds.getCenter(), 0), zoom, { animate: false });
 }
 
@@ -650,7 +651,7 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
       zoom={4}
       zoomSnap={baseMapLayer?.type === "wmts" ? 0 : 1}
       minZoom={0}
-      maxZoom={baseMapLayer?.type === "wmts" ? 10 : 18}
+      maxZoom={18}
       maxBounds={baseMapLayer?.type === "wmts" ? ARCTIC_VIEW_BOUNDS : undefined}
       maxBoundsViscosity={baseMapLayer?.type === "wmts" ? 1 : 0}
       zoomAnimation={false}

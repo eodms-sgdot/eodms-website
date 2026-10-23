@@ -61,6 +61,9 @@ Vite development server. No environment setting is needed.
 Preferences offers OpenStreetMap, Canada Basemap - Transportation, and Arctic
 SDI. Arctic SDI uses the `arctic_cascading` WMTS layer with the Canada-centered
 EPSG:3573 tile matrix (zoom levels 0-10), rather than Web Mercator.
+The map supports overzoom through level 18 for small result footprints: beyond
+level 10 it scales the highest-resolution WMTS tiles without requesting
+unsupported tile levels. This enlarges the map without adding source detail.
 
 Switching between Arctic SDI and a Web Mercator basemap recreates the map,
 including its drawing layers and interaction handlers. Search results, selected
@@ -70,7 +73,8 @@ for OpenStreetMap and Canada Basemap, or the EPSG:3573 grid advertised by Arctic
 SDI. This takes priority over previous result/AOI zooms on switching; subsequent
 result and coordinate zoom actions still work normally. On initial load, result
 zooms take priority over the saved area of interest. Arctic result extents are
-fitted in projected coordinates, including the curvature of polar parallels. Density checks likewise
+fitted at fractional zoom levels in projected coordinates, including the curvature
+of polar parallels. Density checks likewise
 use projected coordinates. Zoom transitions are disabled so finite polar
 coordinates are not extrapolated during animation, and pending zoom callbacks
 cannot target a map removed by a basemap switch. Arctic panning is constrained
