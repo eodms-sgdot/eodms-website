@@ -44,6 +44,7 @@ function clearUnrefreshableSession() {
     .forEach((key) => localStorage.removeItem(key));
 }
 clearUnrefreshableSession();
+localStorage.removeItem('bbox');
 
 function getInitialStacEndpoint(fallback: string): string {
   const savedEndpoint = localStorage.getItem(fields.stacEndpoint);
@@ -104,7 +105,7 @@ export default function App() {
     return prefersDark ? 'dark' : 'light';
   });
 
-  const [bbox, setBbox] = useState<string | null>(() => localStorage.getItem(fields.bbox));
+  const [bbox, setBbox] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(fields.username));
   const [stacEndpoint, setStacEndpoint] = useState(() => getInitialStacEndpoint(initialEndpoint));
   const showStagingBadge = isStagingEndpoint(stacEndpoint, import.meta.env.DEV, import.meta.env.VITE_EODMS_ENDPOINTS);
@@ -263,7 +264,6 @@ export default function App() {
     updateSession(fields.searchStartDate, searchStartDate);
     updateSession(fields.searchEndDate, searchEndDate);
     updateSession(fields.locationSearchProvider, locationSearchProvider);
-    updateSession(fields.bbox, bbox);
 
     // Authentication
     updateSession(fields.username, username);
@@ -273,7 +273,7 @@ export default function App() {
     updateSession(fields.refreshExpiry, refreshExpiry);
     
   }, [
-    language, stacEndpoint, displayMode, baseMapId, bbox,
+    language, stacEndpoint, displayMode, baseMapId,
     filters, searchLimit, searchTemporal, searchStartDate, searchEndDate, 
     locationSearchProvider, username, authToken, authExpiry, refreshToken, refreshExpiry
   ]);

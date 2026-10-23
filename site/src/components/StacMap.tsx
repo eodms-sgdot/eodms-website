@@ -73,10 +73,10 @@ interface StacMapProps {
   activeThumbnails?: Record<string, string>;
   /** Used to clear the current AOI */
   clearAoiTrigger?: number;
-  /** Previously selected AOI persisted across page loads */
-  initialBbox?: string | null;
-  /** Callback for updating the bbox in local storage*/
+  /** Callback for updating the active AOI */
   setBbox: (bbox: string | null) => void;
+  /** Active AOI in the current app session */
+  aoiBbox?: string | null;
 }
 
 interface DrawCreatedEvent extends L.LeafletEvent {
@@ -208,18 +208,17 @@ interface MapViewRequest {
   coordinateBounds: StacMapProps['zoomBounds'];
 }
 
-function MapZoomController({ basemap, bounds, coordinateBounds, initialBounds, previousRequestRef }: {
+function MapZoomController({ basemap, bounds, coordinateBounds, previousRequestRef }: {
   basemap: BaseMap | undefined;
   bounds: StacMapProps['zoomBounds'];
   coordinateBounds: StacMapProps['zoomBounds'];
-  initialBounds: StacMapProps['zoomBounds'];
   previousRequestRef: React.RefObject<MapViewRequest | null>;
 }) {
   const map = useMap();
   useEffect(() => {
     const previous = previousRequestRef.current;
     previousRequestRef.current = { basemap, bounds, coordinateBounds };
-    const basemapChanged = previous && previous.basemap?.name !== basemap?.name;
+    const basemapChanged = !previous || previous.basemap?.name !== basemap?.name;
     map.invalidateSize({ animate: false });
 
     if (basemapChanged && basemap) {
@@ -241,11 +240,11 @@ function MapZoomController({ basemap, bounds, coordinateBounds, initialBounds, p
       ? coordinateBounds
       : bounds && bounds !== previous?.bounds
         ? bounds
-        : !previous ? initialBounds : null;
+        : null;
     if (requestedBounds) {
       fitMapBounds(map, L.latLngBounds([[requestedBounds[1], requestedBounds[0]], [requestedBounds[3], requestedBounds[2]]]));
     }
-  }, [basemap, bounds, coordinateBounds, initialBounds, map, previousRequestRef]);
+  }, [basemap, bounds, coordinateBounds, map, previousRequestRef]);
   return null;
 }
 
@@ -253,13 +252,13 @@ function MapZoomController({ basemap, bounds, coordinateBounds, initialBounds, p
  * Attaches the Leaflet.Draw toolbar to the map and listens for completion events.
  * * @param {Object} props
  * @param {Function} props.onAoiDrawn - Callback to pass the generated BBOX up to the parent.
- * @param {Function} props.setBbox - Callback to clear the BBOX from local storage when it's removed.
+ * @param {Function} props.setBbox - Callback to clear the active AOI when it's removed.
  */
-function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox }: { 
+function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, setBbox }: {
   onOpenCoordinateEntry: () => void;
   coordinateEntryLabel: string;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
-  initialBbox?: string | null;
+  aoiBbox?: string | null;
   setBbox: (bbox: string | null) => void;
 }) {
   const map = useMap();
@@ -268,12 +267,12 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     const drawnItems = drawnItemsRef.current;
     map.addLayer(drawnItems);
 
-    const coordinates = parseBbox(initialBbox);
+    const coordinates = parseBbox(aoiBbox);
     if (drawnItems.getLayers().length === 0 && coordinates) {
       const [west, south, east, north] = coordinates;
       drawnItems.addLayer(L.rectangle([[south, west], [north, east]]));
     }
-    
+
     const drawControl = new L.Control.Draw({
       edit: { featureGroup: drawnItems, remove: true },
       draw: { polyline: false, polygon: false, circle: false, marker: false, circlemarker: false, rectangle: { showArea: false } },
@@ -334,7 +333,7 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
       map.off(L.Draw.Event.DELETED, onDrawDeleted);
     };
-  }, [map, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, initialBbox, setBbox]);
+  }, [map, onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRef, aoiBbox, setBbox]);
   
   return null;
 }
@@ -361,14 +360,21 @@ function createPointSearchBbox(longitude: number, latitude: number): [number, nu
  * Drops a crosshair with a "Search here" chip wherever the user clicks on empty map.
  * Ignores clicks that finish a draw, edit or delete gesture.
  */
-function ClickToSearch({ onSearchHere, onCandidateSelected, label, color }: {
+function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, label, color }: {
   onSearchHere: (longitude: number, latitude: number) => void;
+  onCancel: () => void;
   onCandidateSelected: (longitude: number, latitude: number) => void;
   label: string;
   color: string;
 }) {
   const map = useMap();
   const [point, setPoint] = useState<LatLng | null>(null);
+  const pointRef = useRef<LatLng | null>(null);
+
+  const updatePoint = (nextPoint: LatLng | null) => {
+    pointRef.current = nextPoint;
+    setPoint(nextPoint);
+  };
 
   const icon = useMemo(() => L.divIcon({
     className: 'stac-search-here',
@@ -383,18 +389,23 @@ function ClickToSearch({ onSearchHere, onCandidateSelected, label, color }: {
   useEffect(() => {
     let toolActive = false;
     let toolStoppedAt = 0;
-    const onToolStart = () => { toolActive = true; setPoint(null); };
+    const onToolStart = () => { toolActive = true; updatePoint(null); };
     const onToolStop = () => { toolActive = false; toolStoppedAt = Date.now(); };
     // The click that ends a rectangle drag arrives just after draw:drawstop.
     const onClick = (e: L.LeafletMouseEvent) => {
+      const target = e.originalEvent.target;
+      if (target instanceof Element && target.closest('.stac-result-layer-control')) return;
       if (!toolActive && Date.now() - toolStoppedAt > 300) {
         const candidate = e.latlng.wrap();
-        setPoint(candidate);
+        updatePoint(candidate);
         onCandidateSelected(candidate.lng, candidate.lat);
       }
     };
     const onKeyDown = (e: L.LeafletKeyboardEvent) => {
-      if (e.originalEvent.key === 'Escape') setPoint(null);
+      if (e.originalEvent.key === 'Escape' && pointRef.current) {
+        updatePoint(null);
+        onCancel();
+      }
     };
 
     const startEvents = [L.Draw.Event.DRAWSTART, L.Draw.Event.EDITSTART, L.Draw.Event.DELETESTART];
@@ -409,7 +420,7 @@ function ClickToSearch({ onSearchHere, onCandidateSelected, label, color }: {
       map.off('click', onClick);
       map.off('keydown', onKeyDown);
     };
-  }, [map, onCandidateSelected]);
+  }, [map, onCancel, onCandidateSelected]);
 
   if (!point) return null;
   return (
@@ -419,7 +430,7 @@ function ClickToSearch({ onSearchHere, onCandidateSelected, label, color }: {
       title={label}
       alt={label}
       zIndexOffset={2000}
-      eventHandlers={{ click: () => { onSearchHere(point.lng, point.lat); setPoint(null); } }}
+      eventHandlers={{ click: () => { onSearchHere(point.lng, point.lat); updatePoint(null); } }}
     />
   );
 }
@@ -582,7 +593,7 @@ export default function StacMap(props: StacMapProps) {
   return <ProjectedStacMap key={baseMapLayer?.type === "wmts" ? "arctic" : "mercator"} {...props} previousViewRequestRef={previousViewRequestRef} />;
 }
 
-function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, initialBbox, setBbox, previousViewRequestRef }: StacMapProps & {
+function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, hoveredItem = null, onHoverItem, numberOffset = 0, activeThumbnails = {}, clearAoiTrigger, aoiBbox, setBbox, previousViewRequestRef }: StacMapProps & {
   previousViewRequestRef: React.RefObject<MapViewRequest | null>;
 }) {
   const theme = useTheme();
@@ -600,7 +611,6 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
   const coordinateLabels = [t('longitude'), t('latitude')];
-  const [initialBounds] = useState(() => parseBbox(initialBbox));
   useEffect(() => {
     if (resultLayerControlRef.current) {
       L.DomEvent.disableClickPropagation(resultLayerControlRef.current);
@@ -635,6 +645,11 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
   const handleCandidateSelected = useCallback((longitude: number, latitude: number) => {
     replacePointAoi(createPointSearchBbox(longitude, latitude));
   }, [replacePointAoi]);
+
+  const handleCancelSearchHere = useCallback(() => {
+    drawnItemsRef.current?.clearLayers();
+    setBbox(null);
+  }, [setBbox]);
 
   const searchAroundPoint = (longitude: number, latitude: number, zoom: boolean) => {
     const bbox = createPointSearchBbox(longitude, latitude);
@@ -674,13 +689,13 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
       )
       }
       <SearchControl onLocationSelected={onLocationSelected} searchLabel={t('locationPlaceholder')} drawnItemsRef={drawnItemsRef} selectedProvider={locationSearchProvider}/>
-      <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} initialBbox={initialBbox} setBbox={setBbox}/>
+      <DrawControl onOpenCoordinateEntry={handleOpenCoordinateEntry} coordinateEntryLabel={t('coordinateEntry')} drawnItemsRef={drawnItemsRef} aoiBbox={aoiBbox} setBbox={setBbox}/>
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
-      <MapZoomController basemap={baseMapLayer} bounds={zoomBounds} coordinateBounds={coordinateZoomBounds} initialBounds={initialBounds} previousRequestRef={previousViewRequestRef} />
+      <MapZoomController basemap={baseMapLayer} bounds={zoomBounds} coordinateBounds={coordinateZoomBounds} previousRequestRef={previousViewRequestRef} />
       <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
-      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCandidateSelected={handleCandidateSelected} label={t('searchHere')} color={brandColor} />
+      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCancel={handleCancelSearchHere} onCandidateSelected={handleCandidateSelected} label={t('searchHere')} color={brandColor} />
 
-      <div ref={resultLayerControlRef} style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
+      <div ref={resultLayerControlRef} className="stac-result-layer-control" style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
         <ToggleButtonGroup
           exclusive
           size="small"

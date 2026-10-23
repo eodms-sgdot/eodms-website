@@ -725,7 +725,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} initialBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
+            <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { setBbox(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} 
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem} numberOffset={resultNumberOffset}
               activeThumbnails={activeThumbnails} setBbox={setBbox}
