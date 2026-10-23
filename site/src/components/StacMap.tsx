@@ -680,7 +680,7 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
         baseMapLayer.type === "tile" ? (
           <TileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} />
         ) : baseMapLayer.type === "vectortile" ? (
-          <VectorTileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} />
+          <VectorTileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} language={baseMapLayer.name === 'cbmt' ? language : undefined} attribution={getBaseMapAttribution(baseMapLayer, language)} />
         ) : baseMapLayer.type === "wmts" ? (
           <TileLayer key={baseMapLayer.name + language} url={baseMapLayer.url} attribution={getBaseMapAttribution(baseMapLayer, language)} maxNativeZoom={10} />
         ) : (
