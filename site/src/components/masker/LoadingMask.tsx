@@ -5,6 +5,7 @@ export interface LoadingMaskProps {
   loading: boolean;
   children: React.ReactNode;
   opaque?: boolean;
+  backdropOpacity?: number;
   delayRender?: boolean;
   text?: string;
   onCancel?: () => void;
@@ -27,6 +28,7 @@ const LoadingMask: React.FC<LoadingMaskProps> = ({
   loading,
   children,
   opaque = false,
+  backdropOpacity,
   delayRender = false,
   text,
   onCancel,
@@ -40,6 +42,9 @@ const LoadingMask: React.FC<LoadingMaskProps> = ({
         color: '#secondary.main',
         flexDirection: 'column',
         gap: 2,
+        ...(backdropOpacity !== undefined && {
+          backgroundColor: `rgba(0, 0, 0, ${backdropOpacity})`,
+        }),
         ...(opaque && {
           backgroundColor: 'background.default',
         }),

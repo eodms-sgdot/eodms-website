@@ -172,14 +172,19 @@ export class StacSearchService {
   /**
    * Starts a new search, resetting all paging state.
    */
+  async getSearchUrl(params: StacSearchParams): Promise<string> {
+    await this._sortingSupportPromise;
+    await this._searchSupportPromise;
+    const url = this.supportsSearch ? this.buildSearchUrl(params) : this.buildItemsUrl(params);
+    return new URL(url, window.location.href).href;
+  }
+
   async search(
     params: StacSearchParams,
     headers: Record<string, string>,
   ): Promise<StacSearchResult> {
     const requestId = ++this.searchRequestId;
-    await this._sortingSupportPromise;
-    await this._searchSupportPromise;
-    const initialUrl = this.supportsSearch ? this.buildSearchUrl(params) : this.buildItemsUrl(params);
+    const initialUrl = await this.getSearchUrl(params);
     const previous = { urlHistory: this.urlHistory, currentPage: this.currentPage, nextUrl: this.nextUrl };
     this.urlHistory = [initialUrl];
     this.currentPage = 1;

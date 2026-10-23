@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, Tooltip, Badge, Alert } from '@mui/material';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -12,6 +12,7 @@ import { fields } from '../session';
 import { isTemporalFilterField } from '../utils/FilterBuilder';
 import Blind from './Blind';
 import SearchIcon from '@mui/icons-material/Search';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import NaplWelcome from './NaplWelcome';
 
 /**
@@ -52,6 +53,7 @@ export interface SearchPanelProps {
   setSortby: (val: string) => void;
   /** Callback to execute a search */
   executeSearch: () => void;
+  getSearchUrl: () => Promise<string>;
 }
 
 const getCollectionDateRange = (collection: STACCollection, t: (key: TranslationKey) => string) => {
@@ -117,12 +119,14 @@ const getCollectionTimelineSegments = (collection: STACCollection, scale: Collec
 export default function SearchPanel({ 
   stacEndpoint, fixedCollectionId, selectedCollections, setSelectedCollections,
   searchTemporal, setSearchTemporal, startDate, setStartDate, endDate, setEndDate, supportsSearch,
-  supportsSorting, sortby, setSortby, executeSearch
+  supportsSorting, sortby, setSortby, executeSearch, getSearchUrl
 }: SearchPanelProps) {
   
   const [collections, setCollections] = useState<STACCollection[]>([]);
   const timelineScale = useMemo(() => getCollectionTimelineScale(collections), [collections]);
   const [loading, setLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   const [collectionsError, setCollectionsError] = useState<{ key: TranslationKey; status?: number } | null>(null);
   const {
     authToken,
@@ -404,7 +408,7 @@ export default function SearchPanel({
                   }
                   label={
                     <Box sx={{ width: '100%', minWidth: 0, py: 0.25 }}>
-                      <Typography component="span" variant="body2" title={c.title || c.id}>
+                      <Typography component="span" variant="body2" title={c.title || c.id} sx={{ display: 'block' }}>
                         {c.title || c.id}
                       </Typography>
                       {(timelineSegments.length > 0 || dateRange) && (
@@ -443,14 +447,41 @@ export default function SearchPanel({
       ) : null}
 
       <Divider />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, m: 2 }}>
       <Button
         variant="contained"
         startIcon={<SearchIcon />}
         onClick={executeSearch}
-        sx={{ m: 2 }}
+        sx={{ flexGrow: 1 }}
       >
         {t("search")}
       </Button>
+      <Tooltip title={t('copySearchUrl')}>
+        <span>
+          <IconButton aria-label={t('copySearchUrl')} disabled={copying} onClick={async () => {
+            setCopying(true);
+            try {
+              const url = await getSearchUrl();
+              try {
+                await navigator.clipboard.writeText(url);
+              } catch {
+                throw new Error(t('copySearchUrlFailed'));
+              }
+              setCopyNotice({ message: t('searchUrlCopied'), severity: 'success' });
+            } catch (error) {
+              setCopyNotice({ message: error instanceof Error ? error.message : t('copySearchUrlFailed'), severity: 'error' });
+            } finally {
+              setCopying(false);
+            }
+          }} sx={{ width: 40, height: 40 }}>
+            {copying ? <CircularProgress size={20} /> : <ContentCopyIcon fontSize="small" />}
+          </IconButton>
+        </span>
+      </Tooltip>
+      </Box>
+      <Snackbar open={!!copyNotice} autoHideDuration={4000} onClose={() => setCopyNotice(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={copyNotice?.severity} onClose={() => setCopyNotice(null)}>{copyNotice?.message}</Alert>
+      </Snackbar>
 
       <Box sx={{ mt: "auto", display: "flex", flexDirection: "column", gap: 2, p:2 }}>
         <DatePicker

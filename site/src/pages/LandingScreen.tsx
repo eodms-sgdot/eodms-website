@@ -458,14 +458,13 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * * @async
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
-  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true) => {
+  const prepareSearch = async (searchBbox?: [number, number, number, number]) => {
     const collectionIDs = experience.fixedCollectionId
       ? [experience.fixedCollectionId]
       : selectedCollections.map(collection => collection.id);
 
     if (collectionIDs.length === 0) {
-      setSearchError(t("errorSelectCollection"));
-      return;
+      return null;
     }
 
     const params: StacSearchParams = {
@@ -475,7 +474,6 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       ...(selectedCollections.length <= 1 && {sortby}),
     };
 
-    try {
       if (searchTemporal === 'custom') {
         params.datetime = customDateRange(searchStartDate, searchEndDate);
       } else if (searchTemporal !== 'anytime') {
@@ -511,16 +509,29 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       const userFiltersText = collectionIDs.length === 1
         ? buildFilter(filters[collectionIDs[0]] ?? [], queryablesByCollection[0])
         : '';
-      geometryValidityCollections.current = new Set(collectionIDs.filter((_, index) =>
+      const geometryValidityCollectionIds = collectionIDs.filter((_, index) =>
         hasGeometryValidityQueryable(queryablesByCollection[index]),
-      ));
+      );
       const geometryValidityFilter = buildGeometryValidityFilter(queryablesByCollection);
       const filtersText = [userFiltersText, geometryValidityFilter].filter(Boolean).join(' AND ');
       if (filtersText) params.filter = filtersText;
+      return { params, geometryValidityCollectionIds };
+  };
+
+  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true) => {
+    let prepared;
+    try {
+      prepared = await prepareSearch(searchBbox);
     } catch (error) {
       setSearchError(error instanceof DateSearchError ? t(error.translationKey) : t('errorFetch'));
       return;
     }
+    if (!prepared) {
+      setSearchError(t('errorSelectCollection'));
+      return;
+    }
+    const { params, geometryValidityCollectionIds } = prepared;
+    geometryValidityCollections.current = new Set(geometryValidityCollectionIds);
 
     const requestId = ++searchRequestId.current;
     setSearchError(null);
@@ -553,13 +564,26 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
     }
   };
 
-  const searchWithCurrentAoi = () => {
+  const getCurrentSearchBbox = () => {
     const currentBbox = bbox?.split(',').map(Number);
-    const searchBbox = currentBbox?.length === 4 && currentBbox.every(Number.isFinite)
+    return currentBbox?.length === 4 && currentBbox.every(Number.isFinite)
       ? currentBbox as [number, number, number, number]
       : undefined;
+  };
 
-    handleSearch(searchBbox);
+  const searchWithCurrentAoi = () => {
+    void handleSearch(getCurrentSearchBbox());
+  };
+
+  const getCurrentSearchUrl = async () => {
+    let prepared;
+    try {
+      prepared = await prepareSearch(getCurrentSearchBbox());
+    } catch (error) {
+      throw new Error(error instanceof DateSearchError ? t(error.translationKey) : t('errorFetch'));
+    }
+    if (!prepared) throw new Error(t('errorSelectCollection'));
+    return searchService.getSearchUrl(prepared.params);
   };
 
   const [openBlind, setOpenBlind] = useState<'orders' | 'preferences' | 'processing' | null>(null);
@@ -782,7 +806,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         <SkyBar />
       </AppBar>
 
-      <LoadingMask loading={isSearching} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={cancelSearch} cancelText={t('cancel')}>
+      <LoadingMask loading={isSearching} backdropOpacity={0.7} indicator={isSearching ? <LoaderCycle loaders={experience.id === 'napl' ? NAPL_SEARCH_LOADERS : SEARCH_LOADERS} start={searchAnimation} /> : undefined} onCancel={cancelSearch} cancelText={t('cancel')}>
         <Box ref={setContentEl} sx={{
           display: 'flex', flexGrow: 1, overflow: 'hidden', position: 'relative',
           cursor: isResizingResults ? 'col-resize' : undefined,
@@ -794,7 +818,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
               searchLimit={searchLimit} setSearchLimit={setSearchLimit} searchTemporal={searchTemporal} setSearchTemporal={setSearchTemporal}
               startDate={searchStartDate} setStartDate={setSearchStartDate} endDate={searchEndDate} setEndDate={setSearchEndDate} 
-              supportsSearch={supportsSearch} supportsSorting={supportsSorting} sortby={sortby} setSortby={setSortby} executeSearch={searchWithCurrentAoi}
+              supportsSearch={supportsSearch} supportsSorting={supportsSorting} sortby={sortby} setSortby={setSortby} executeSearch={searchWithCurrentAoi} getSearchUrl={getCurrentSearchUrl}
             />
           </Drawer>
           <Box sx={{ 
@@ -917,7 +941,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
                 bottom: 0,
                 width: 14,
                 transform: 'translateX(-100%)',
-                zIndex: 1201,
+                zIndex: theme => theme.zIndex.drawer - 1,
                 cursor: 'col-resize',
                 touchAction: 'none',
                 '&::after': {
