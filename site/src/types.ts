@@ -27,7 +27,7 @@ export interface STACCollection {
 }
 
 export interface STACQueryable {
-  type?: null | "string" | "integer" | "number" | "boolean" | "datetime" | "geometry-any";
+  type?: string | string[] | null;
   title?: string | null;
   format?: string | null,
   contentEncoding?: string | null,
@@ -37,7 +37,11 @@ export interface STACQueryable {
   maximum?: number | null;
   maxLength?: number | null;
   minLength?: number | null;
-  enum?: StringOrInt[] | null;
+  enum?: QueryableEnumValue[] | null;
+  items?: {
+    type?: string | string[] | null;
+    enum?: QueryableEnumValue[] | null;
+  };
 }
 
 export interface STACQueryables {
@@ -48,6 +52,7 @@ export interface STACQueryables {
   properties: Partial<Record<string, STACQueryable>>;
 }
 
+export type QueryableEnumValue = string | number | boolean | null;
 export type StringOrInt = string | number;
 
 export interface Duration {
@@ -59,11 +64,13 @@ export type FilterDate = string | null;
 export interface FilterValue {
   id: string;
   fieldKey: string;
-  type?: "string" | "number" | "duration" | "date-range"
+  type?: "string" | "number" | "boolean" | "duration" | "date-range"
   operation?: string | undefined;
   value?:
     | string
     | number
+    | boolean
+    | null
     | [number, number]
     | FilterDate
     | [FilterDate, FilterDate]

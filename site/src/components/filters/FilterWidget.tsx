@@ -1,10 +1,10 @@
-import { useMemo} from "react";
 import type { FilterValue, STACQueryable } from "../../types";
 import { Box, Typography } from "@mui/material";
 import StringFilter from "./StringFilter";
 import IntegerFilter from "./IntegerFilter";
 import DateTimeFilter from "./DateTimeFilter";
 import NumberFilter from "./NumberFilter";
+import QueryableChoiceFilter from "./QueryableChoiceFilter";
 
 /**
  * The properties required to populate filter fields.
@@ -62,6 +62,7 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
     queryable, 
     updateFilterHandler
 }) => {
+    const queryableKey = `${qName}-${JSON.stringify(queryable)}`;
 
     /**
      * Selects the Filter element type to be displayed for a given FilterValue
@@ -70,59 +71,63 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
      * @returns 
      */
     const getFilterForField = (filterValue: FilterValue) => {
-        if (queryable.type === 'string' && (!queryable.format || queryable.format != 'date-time') 
+        const queryableType = Array.isArray(queryable.type)
+            ? queryable.type.find(typeName => typeName !== 'null')
+            : queryable.type;
+
+        if (queryable.enum?.length || queryableType === 'boolean') {
+            return (
+                <QueryableChoiceFilter
+                    key={filterValue.id}
+                    collectionName={collectionName}
+                    filterData={filterValue}
+                    queryable={queryable}
+                    updateFilterHandler={updateFilterHandler}
+                />
+            );
+        } else if (queryableType === 'string' && (!queryable.format || queryable.format != 'date-time') 
                 && (!queryable.contentEncoding || queryable.contentEncoding != 'date-time')) {
 
             return (
                 <StringFilter
-                    key={qName}
+                    key={queryableKey}
                     collectionName={collectionName}
                     filterData={filterValue}
                     queryable={queryable}
                     updateFilterHandler={updateFilterHandler}
                 />
             );
-        } else if (queryable.type === 'number') {
+        } else if (queryableType === 'number') {
             return (
                 <NumberFilter
-                    key={qName}
+                    key={queryableKey}
                     collectionName={collectionName}
                     filterData={filterValue}
                     queryable={queryable}
                     updateFilterHandler={updateFilterHandler}
                 />
             );
-        } else if (queryable.type === 'integer') {
+        } else if (queryableType === 'integer') {
             return (
                 <IntegerFilter
-                    key={qName}
+                    key={queryableKey}
                     collectionName={collectionName}
                     filterData={filterValue}
                     queryable={queryable}
                     updateFilterHandler={updateFilterHandler}
                 />
             );
-        } else if (queryable.type === 'datetime' || (queryable.type === 'string' && queryable.format && queryable.format === 'date-time')
-                || (queryable.type === 'string' && queryable.contentEncoding && queryable.contentEncoding === 'date-time')) {
+        } else if (queryableType === 'datetime' || (queryableType === 'string' && queryable.format && queryable.format === 'date-time')
+            || (queryableType === 'string' && queryable.contentEncoding && queryable.contentEncoding === 'date-time')) {
 
             return (
                 <DateTimeFilter
-                    key={qName}
+                    key={queryableKey}
                     collectionName={collectionName}
                     filterData={filterValue}
                     updateFilterHandler={updateFilterHandler}
                 />
             );
-        // } else if (queryable.type === 'boolean') {
-        //     return (
-        //         <BooleanFilter
-        //             key={qName}
-        //             collectionName={collectionName}
-        //             filterData={filterValue}
-        //             queryable={queryable}
-        //             updateFilterHandler={updateFilterHandler}
-        //         />
-        //     );
         }
 
         return null;
@@ -131,16 +136,7 @@ const FilterWidget: React.FC<FilterWidgetProps> =({
     /**
      * The array of Filter elements belonging to this widget
      */
-    const fields = useMemo(() => {
-        const fieldArray = [];
-        for (const filterField of filterData) {
-            const field = getFilterForField(filterField);
-            if (field) {
-                fieldArray.push(field);
-            }
-        }
-        return fieldArray;
-    }, [filterData]);
+    const fields = filterData.map(getFilterForField).filter(Boolean);
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', mt: 1 }}>

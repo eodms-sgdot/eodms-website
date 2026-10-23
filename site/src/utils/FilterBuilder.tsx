@@ -1,6 +1,7 @@
-import type { FilterValue} from "../types";
+import type { FilterValue, STACQueryable} from "../types";
 import { createDateRange } from "./DateUtils";
 import { customDateRange, DateSearchError } from "./PartialDates";
+import { buildQueryableFilterClauses, isFilterAllowedByQueryables } from "./QueryableFilterUtils";
 
 const TEMPORAL_FILTER_FIELDS = new Set(["datetime", "start_datetime", "end_datetime"]);
 
@@ -12,92 +13,41 @@ export const isTemporalFilterField = (fieldKey: string): boolean =>
  * @param filters The filters to be added to the 
  * @returns a CQL2 filter query parameter to be added to STAC search requests
  */
-export const buildFilter = (filters: FilterValue[]): string => {
-    if(!filters || filters.length === 0) {
-        return '';
+export const buildFilter = (
+    filters: FilterValue[] = [],
+    queryables?: Record<string, STACQueryable>,
+): string => {
+    const clauses = buildQueryableFilterClauses(filters, queryables);
+
+    for (const filterValue of filters) {
+        const { fieldKey, operation, type, value } = filterValue;
+        if (isTemporalFilterField(fieldKey)) continue;
+        if (!isFilterAllowedByQueryables(filterValue, queryables)) continue;
+
+        if (!operation || value === undefined || value === '') continue;
+
+        if (type === 'duration' && value !== null) {
+            if (value !== 'anytime') {
+                const [start, end] = createDateRange(value.toString());
+                if (start && end) {
+                    clauses.push(`${fieldKey} >= TIMESTAMP('${start}') AND ${fieldKey} <= TIMESTAMP('${end}')`);
+                }
+            }
+        } else if (type === 'date-range') {
+            if (!Array.isArray(value) || value.length !== 2 ||
+                value.some(date => date !== null && typeof date !== 'string')) {
+                throw new DateSearchError('invalidDateParts');
+            }
+            const range = customDateRange(String(value[0] ?? ''), String(value[1] ?? ''));
+            if (range) {
+                const [start, end] = range.split('/');
+                const dateClauses: string[] = [];
+                if (start !== '..') dateClauses.push(`${fieldKey} >= TIMESTAMP('${start}')`);
+                if (end !== '..') dateClauses.push(`${fieldKey} <= TIMESTAMP('${end}')`);
+                if (dateClauses.length) clauses.push(dateClauses.join(' AND '));
+            }
+        }
     }
 
-    const applicableFilters = filters.filter(filterValue => {
-        if (isTemporalFilterField(filterValue.fieldKey)) return false;
-        if (filterValue.type === 'date-range' && Array.isArray(filterValue.value)) {
-            return filterValue.value.some(value => value !== null && value !== '' && value !== '..');
-        }
-        return true;
-    });
-    if (applicableFilters.length === 0) {
-        return '';
-    }
-    
-    const tokens:string[]  = []
-    let first:boolean = true;
-
-    applicableFilters.forEach((filterValue) => {
-        const value = filterValue.value;
-        const operation = filterValue.operation
-        const type = filterValue.type;
-
-        if(operation && value) {
-            if(!first) {
-                tokens.push(' AND ')
-            }
-
-            if(type === 'string') {
-                tokens.push(filterValue.fieldKey);
-                tokens.push(' ');
-                tokens.push(operation);
-                tokens.push(' \'');
-                // CQL2 escapes a single quote inside a string literal by doubling it.
-                tokens.push(value.toString().replace(/'/g, "''"));
-                tokens.push('\' ');
-                first = false;
-            }
-            else if(type === 'number') {
-                tokens.push(filterValue.fieldKey);
-                tokens.push(' ');
-                tokens.push(operation);
-                tokens.push(' ');
-                tokens.push(value.toString());
-                first = false;
-            }
-            else if(type === 'duration') {
-                if(value !== 'anytime') {
-                    const dates = createDateRange(value.toString())
-                    const start = dates[0];
-                    const end = dates[1];
-
-                    if(start && end) {
-                        tokens.push(filterValue.fieldKey);
-                        tokens.push(' >= ');
-                        tokens.push('TIMESTAMP(\'');
-                        tokens.push(start.toString());
-                        tokens.push('\')');
-                        tokens.push(' AND ')
-                        tokens.push(filterValue.fieldKey);
-                        tokens.push(' <= ');
-                        tokens.push('TIMESTAMP(\'');
-                        tokens.push(end.toString());
-                        tokens.push('\')');
-                        first = false;
-                    }
-                }
-            }
-            else if(type === 'date-range') {
-                if (!Array.isArray(value) || value.length !== 2 ||
-                    value.some(date => date !== null && typeof date !== 'string')) {
-                    throw new DateSearchError('invalidDateParts');
-                }
-                const range = customDateRange(String(value[0] ?? ''), String(value[1] ?? ''));
-                if (range) {
-                    const [start, end] = range.split('/');
-                    const clauses: string[] = [];
-                    if (start !== '..') clauses.push(`${filterValue.fieldKey} >= TIMESTAMP('${start}')`);
-                    if (end !== '..') clauses.push(`${filterValue.fieldKey} <= TIMESTAMP('${end}')`);
-                    tokens.push(clauses.join(' AND '));
-                    first = false;
-                }
-            }            
-        }
-    });
-
-    return tokens.join('');
+    return clauses.join(' AND ');
 };

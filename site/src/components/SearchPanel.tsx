@@ -101,7 +101,7 @@ export default function SearchPanel({
         .filter(collectionName => !fixedCollectionId || collectionName === fixedCollectionId)
         .forEach((collectionName) => {
           filters[collectionName].forEach((filterValue) => {
-              if(filterValue.operation && filterValue.value && !isTemporalFilterField(filterValue.fieldKey)) {
+              if(filterValue.operation && filterValue.value !== undefined && filterValue.value !== '' && !isTemporalFilterField(filterValue.fieldKey)) {
                 count = count + 1;
               }
           });  
@@ -136,6 +136,10 @@ export default function SearchPanel({
           const collections = await getCollections(stacEndpoint, collectionAuthToken);
           if (cancelled) return;
           setCollections(keepIfSame(collections));
+          setSelectedCollections(previous => previous.flatMap(selected => {
+            const current = collections.find(collection => collection.id === selected.id);
+            return current ? [current] : [];
+          }));
         }
       } catch (error: unknown) {
         if (cancelled) return;

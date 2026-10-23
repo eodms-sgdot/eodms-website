@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { AppContext } from "../../AppContext";
-import { Accordion, AccordionDetails, AccordionSummary, Box, Button, CircularProgress, IconButton, Link, Tooltip, Typography } from "@mui/material";
+import { Accordion, AccordionDetails, AccordionSummary, Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, Link, Tooltip, Typography } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { FilterValue, STACCollection, STACQueryable} from "../../types";
@@ -66,7 +66,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     } = useContext(AppContext)!;
 
     const [loading, setLoading] = useState(false);
-    const [queryablesMap] = useState(new Map<string, Record<string, STACQueryable>>);
+    const [queryablesMap, setQueryablesMap] = useState(new Map<string, Record<string, STACQueryable>>());
 
     /**
      * Local copy of the filter values
@@ -117,31 +117,46 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
      * to get the STACQueryables used to build the panel
      */
     useEffect(() => {
+        let cancelled = false;
+
         const fetchFilters = async () => {
-            setLoading(true);
+            setLoading(selectedCollections.length > 0);
+            setQueryablesMap(new Map());
+
+            if (selectedCollections.length === 0) {
+                return;
+            }
 
             try {
-                for(const collection of selectedCollections) {
-                    const collectionName = collection.id
+                const queryablesToken = authToken ? await getValidAuthToken() : null;
+                const entries = await Promise.all(selectedCollections.map(async collection => {
+                    const collectionName = collection.id;
                     const queryablesUrl = collection.links.find(link => link.rel.includes('queryables') && link.type.includes('json'))?.href;
 
-                    if(queryablesUrl) {
-                        const queryablesToken = authToken ? await getValidAuthToken() : null;
+                    if (queryablesUrl) {
+                        try {
                         const queryables:Record<string, STACQueryable> = await getQueryables(queryablesUrl, queryablesToken);
-                        queryablesMap.set(collectionName, queryables);
+                            return [collectionName, queryables] as const;
+                        } catch (e) {
+                            console.warn(`Queryables for ${collectionName} unreachable`, e);
+                        }
                     }
-                }
+                    return [collectionName, {}] as const;
+                }));
+
+                if (!cancelled) setQueryablesMap(new Map(entries));
             } 
             catch (e) {
                 console.warn("Queryables for collection unreachable", e); 
             }
             finally { 
-                setLoading(false); 
+                if (!cancelled) setLoading(false); 
             }
         };
 
         fetchFilters();
-    }, [stacEndpoint, authToken, getValidAuthToken, selectedCollections, queryablesMap]);
+        return () => { cancelled = true; };
+    }, [stacEndpoint, authToken, getValidAuthToken, selectedCollections]);
 
     return (
         <Box sx={{width: '100%', height: '100%', overflowY: 'auto', p: 1}}>
@@ -185,11 +200,26 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 <AccordionDetails>
                                     <Box key={collectionName} sx={{ mb: 1 }}>
                                     {
-                                        queryables === undefined ? (
-                                            <Typography sx={{fontSize: 'small'}}>t('noFilters')</Typography>
+                                        Object.entries(queryables).filter(([qName, queryable]) =>
+                                            !isTemporalFilterField(qName) && (qName === 'geometry_valid' ||
+                                            queryable.type !== 'geometry-any'
+                                            )
+                                        ).length === 0 ? (
+                                            <Typography sx={{fontSize: 'small'}}>{t('noFilters')}</Typography>
                                         ) : (
-                                            Object.entries(queryables).filter(([qName]) => !isTemporalFilterField(qName)).map(([qName, queryable]) => 
-                                                queryable ? 
+                                            Object.entries(queryables).filter(([qName, queryable]) =>
+                                                !isTemporalFilterField(qName) && (qName === 'geometry_valid' ||
+                                                queryable.type !== 'geometry-any'
+                                                )
+                                            ).map(([qName, queryable]) =>
+                                                !queryable ? (
+                                                    <Typography key={`${collectionName}-queryable-${qName}`} sx={{fontSize:'small'}}>{t('noFilters')}</Typography>
+                                                ) : qName === 'geometry_valid' ? (
+                                                    <Box key={`${collectionName}-queryable-${qName}`} sx={{ display: 'flex', flexDirection: 'column', mt: 1, mb: 1 }}>
+                                                        <Typography variant="body2">{queryable.title || qName}</Typography>
+                                                        <FormControlLabel control={<Checkbox checked disabled size="small" />} label={t('trueValue')} />
+                                                    </Box>
+                                                ) : (
                                                     <FilterWidget
                                                         key={`${collectionName}-queryable-${qName}`}
                                                         collectionName={collectionName}
@@ -197,10 +227,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                                         qName={qName}
                                                         queryable={queryable}
                                                         updateFilterHandler={updateFilters}
-                                                    >
-                                                    </FilterWidget>
-                                                : (
-                                                   <Typography sx={{fontSize: 'small'}}>t('noFilters')</Typography>
+                                                    />
                                                 )
                                             )
                                         )

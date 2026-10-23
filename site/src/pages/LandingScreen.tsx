@@ -17,6 +17,7 @@ import type { STACCollection, STACItem } from '../types';
 import { createDateRange } from '../utils/DateUtils';
 import { customDateRange, DateSearchError } from '../utils/PartialDates';
 import { buildFilter } from '../utils/FilterBuilder';
+import { buildGeometryValidityFilter, hasGeometryValidityQueryable } from '../utils/QueryableFilterUtils';
 import LoadingMask from '../components/masker/LoadingMask';
 import { StacSearchService } from '../services/StacSearchService';
 import type { StacSearchParams, StacSearchResult } from '../services/StacSearchService';
@@ -31,6 +32,8 @@ import OrderReadyNotifier from '../components/OrderReadyNotifier';
 import PreferencesPanel from '../components/PreferencesPanel';
 import { useIsMobile, getInitials } from '../utils/RenderingUtils';
 import { getItemsExtent } from '../utils/GeometryUtils';
+import { getCollection, getQueryables } from '../services/StacService';
+import { hasUsableItemGeometry } from '../utils/STACItemUtils';
 import axios from 'axios';
 import type { ExplorerExperience } from '../experiences';
 import { SkyBar, TitleCharm } from '../components/OrbitCharm';
@@ -91,6 +94,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [searchAnimation, setSearchAnimation] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchRequestId = useRef(0);
+  const geometryValidityCollections = useRef(new Set<string>());
 
   const [selectedFootprints, setSelectedFootprints] = useState<Set<string>>(() => new Set());
   const [focusedItem, setFocusedItem] = useState<string | null>(null);
@@ -205,17 +209,20 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   };
 
   const handleSearchResult = (result: StacSearchResult, zoomToResults = true) => {
-    setSearchResults(result.items);
+    const usableItems = result.items.filter(item =>
+      hasUsableItemGeometry(item, geometryValidityCollections.current.has(item.collection)),
+    );
+    setSearchResults(usableItems);
     setLoadedResults(previous => {
-      const items = new Map(previous.map(item => [JSON.stringify([item.collection, item.id]), item]));
-      result.items.forEach(item => items.set(JSON.stringify([item.collection, item.id]), item));
-      return [...items.values()];
+      const loadedItems = new Map(previous.map(item => [JSON.stringify([item.collection, item.id]), item]));
+      usableItems.forEach(item => loadedItems.set(JSON.stringify([item.collection, item.id]), item));
+      return [...loadedItems.values()];
     });
     setSelectedFootprints(new Set());
     setFocusedItem(null);
-    const throughThisPage = (result.currentPage - 1) * pageSize + result.items.length;
+    const throughThisPage = (result.currentPage - 1) * pageSize + usableItems.length;
     setDiscovered(prev => throughThisPage >= prev.count ? { count: throughThisPage, hasMore: result.hasNext } : prev);
-    const extent = getItemsExtent(result.items);
+    const extent = getItemsExtent(usableItems);
     if (extent && zoomToResults) setZoomBounds(extent);
     setPagingState({
       hasNext: result.hasNext,
@@ -407,13 +414,44 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       } else if (searchTemporal !== 'anytime') {
         params.datetime = createDateRange(searchTemporal).join('/');
       }
-      if (selectedCollections.length === 1) {
-        const filtersText = buildFilter(filters[collectionIDs[0]]);
-        if (filtersText) params.filter = filtersText;
-      }
+      const queryablesToken = authToken ? await getValidAuthToken() : null;
+      const queryablesByCollection = await Promise.all(collectionIDs.map(async collectionId => {
+        let collection = selectedCollections.find(selected => selected.id === collectionId);
+        let queryablesUrl = collection?.links.find(link =>
+          link.rel.includes('queryables') && link.type.includes('json'),
+        )?.href;
+
+        if (!queryablesUrl) {
+          try {
+            collection = await getCollection(stacEndpoint, collectionId, queryablesToken);
+            queryablesUrl = collection.links.find(link =>
+              link.rel.includes('queryables') && link.type.includes('json'),
+            )?.href;
+          } catch (error) {
+            console.warn(`Queryables for ${collectionId} unreachable`, error);
+          }
+        }
+
+        if (!queryablesUrl) return {};
+        try {
+          return await getQueryables(queryablesUrl, queryablesToken);
+        } catch (error) {
+          console.warn(`Queryables for ${collectionId} unreachable`, error);
+          return {};
+        }
+      }));
+
+      const userFiltersText = collectionIDs.length === 1
+        ? buildFilter(filters[collectionIDs[0]] ?? [], queryablesByCollection[0])
+        : '';
+      geometryValidityCollections.current = new Set(collectionIDs.filter((_, index) =>
+        hasGeometryValidityQueryable(queryablesByCollection[index]),
+      ));
+      const geometryValidityFilter = buildGeometryValidityFilter(queryablesByCollection);
+      const filtersText = [userFiltersText, geometryValidityFilter].filter(Boolean).join(' AND ');
+      if (filtersText) params.filter = filtersText;
     } catch (error) {
-      if (!(error instanceof DateSearchError)) throw error;
-      setSearchError(t(error.translationKey));
+      setSearchError(error instanceof DateSearchError ? t(error.translationKey) : t('errorFetch'));
       return;
     }
 

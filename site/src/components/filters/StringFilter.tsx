@@ -57,7 +57,10 @@ const StringFilter: React.FC<StringFilterProps> = ({
   const [localOperation, setLocalOperation] = useState<string>(filterData.operation && filterData.operation != '' ? filterData.operation : '=');
 
   const isValueValid = (value: string, operation: string) => {
-    if (!queryable.pattern || value === '') return true;
+    if (value === '') return true;
+    if (queryable.minLength != null && value.length < queryable.minLength) return false;
+    if (queryable.maxLength != null && value.length > queryable.maxLength) return false;
+    if (!queryable.pattern) return true;
     const validationValue = operation === 'LIKE' ? value.replace(/[%_]/g, '') : value;
     return validationValue === '' || new RegExp('^'+queryable.pattern+'$', 'i').test(validationValue);
   };
@@ -92,44 +95,6 @@ const StringFilter: React.FC<StringFilterProps> = ({
     }
   };
 
-  /**
-   * Handler to handle what happens when a filter value is selected.
-   * @param event 
-   */
-  const handleFilterSelectValueChange = (event: SelectChangeEvent) => {
-    const newValue = event.target.value;
-    setLocalValue(newValue);
-
-    const newFilter: FilterValue = {...filterData, type: 'string', operation: localOperation, value: newValue};
-    updateFilterHandler(collectionName, newFilter);
-  };
-
-  if (queryable.enum) {
-    return (
-      <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', maxWidth:576 }}>
-        <FormControl variant="outlined" size="small" sx={{ width: '75vw', maxWidth:566}}>
-          <InputLabel shrink id="select-value-label">
-            {t('value')}
-          </InputLabel>
-          <Select
-            labelId="select-value-label"
-            value={localValue}
-            onChange={handleFilterSelectValueChange}
-            label={t('value')}
-            displayEmpty
-          >
-            <MenuItem key={'any'} value={''}>{t('any')}</MenuItem>
-            {queryable.enum.map((choice) => (
-              <MenuItem key={choice ?? 'empty'} value={choice ?? ''}>
-                {choice}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: 1, width: '75vw'}}>
       <FormControl variant="outlined" size="small" sx={{ width: '25vw', maxWidth:182 }}>
@@ -154,6 +119,7 @@ const StringFilter: React.FC<StringFilterProps> = ({
         variant="outlined"
         value={localValue}
         onChange={handleFilterValueChange}
+        slotProps={{ htmlInput: { maxLength: queryable.maxLength ?? undefined } }}
         placeholder={t('stringPlaceholder')}
         color={valid ? 'primary' : 'warning'}
         sx={{ width: '50vw', maxWidth: 374}}

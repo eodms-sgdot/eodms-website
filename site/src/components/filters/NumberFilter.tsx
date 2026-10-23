@@ -56,9 +56,8 @@ const NumberFilter: React.FC<NumberFilterProps> = ({
     const [localValue, setLocalValue] = useState<string>((filterData.value as string) ?? '');
     const [valid, setValid] = useState<boolean>(true);
     const [localOperation, setLocalOperation] = useState<string>(filterData.operation && filterData.operation != '' ? filterData.operation : '=');
-    filterData.operation = localOperation;
-    const minimum = queryable.minimum ? queryable.minimum : -Infinity;
-    const maximum = queryable.maximum ? queryable.maximum: Infinity;
+    const minimum = queryable.minimum ?? -Infinity;
+    const maximum = queryable.maximum ?? Infinity;
 
     /**
      * Handler to handle what happens when a filter value is entered.
@@ -89,7 +88,9 @@ const NumberFilter: React.FC<NumberFilterProps> = ({
 
     const commitValue = () => {
         if (!valid) return;
-        const newFilter: FilterValue = {...filterData, type: 'number', value: +localValue};
+        const newFilter: FilterValue = localValue === ''
+            ? {...filterData, type: 'number', operation: undefined, value: undefined}
+            : {...filterData, type: 'number', operation: localOperation, value: +localValue};
         updateFilterHandler(collectionName, newFilter);
     };
 
@@ -104,41 +105,6 @@ const NumberFilter: React.FC<NumberFilterProps> = ({
         const newFilter: FilterValue = {...filterData, type: 'number', operation: newOperation};
         updateFilterHandler(collectionName, newFilter);      
     };
-
-    /**
-     * Handler to handle what happens when a filter value is selected.
-     * @param event 
-     */
-    const handleFilterSelectValueChange = (event: SelectChangeEvent) => {
-        const newValue = event.target.value;
-        setLocalValue(newValue);
-
-        const newFilter: FilterValue = {...filterData, type: 'number', value: newValue};
-        updateFilterHandler(collectionName, newFilter);
-    };
-
-    if (queryable.enum) {
-        return (
-        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: 1, maxWidth:576 }}>
-            <FormControl variant="outlined" sx={{ width: '75vw', maxWidth:566 }}>
-            <InputLabel shrink id="select-value-label">
-                {t('value')}
-            </InputLabel>
-            <Select
-                labelId="select-field-label"
-                value={localValue}
-                onChange={handleFilterSelectValueChange}
-                label={t('value')}
-            >
-                <MenuItem key={'any'} value={''}>{t('any')}</MenuItem>
-                {queryable.enum.map((choice) => (
-                <MenuItem key={choice ?? 'empty'} value={choice ?? ''}>{choice}</MenuItem>
-                ))}
-            </Select>
-            </FormControl>
-        </Box>
-        );
-    }
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: 1, width: '75vw' }}>

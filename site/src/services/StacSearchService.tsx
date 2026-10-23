@@ -95,7 +95,7 @@ export class StacSearchService {
       queryParams.append("datetime", params.datetime);
     }
 
-    if (params.filter && params.collections.length === 1) {
+    if (params.filter) {
       queryParams.append("filter-lang", "cql2-text");
       queryParams.append("filter", params.filter);
     }
@@ -121,7 +121,7 @@ export class StacSearchService {
       queryParams.append("datetime", params.datetime);
     }
 
-    if (params.filter && params.collections.length === 1) {
+    if (params.filter) {
       queryParams.append("filter-lang", "cql2-text");
       queryParams.append("filter", params.filter);
     }
