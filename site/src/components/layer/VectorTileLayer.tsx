@@ -20,6 +20,7 @@ export function VectorTileLayer({ url, language, attribution, apiKey } : VectorT
     const customLayer = EsriVector.vectorTileLayer(url, {
       apiKey: apiKey,
       attribution: attribution,
+      pane: "tilePane",
       ...(language && { style: (style: { layers: BasemapStyleLayer[] }) => localizeCanadaBasemapStyle(style, language) }),
     });
 

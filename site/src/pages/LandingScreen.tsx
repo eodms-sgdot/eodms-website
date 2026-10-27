@@ -857,7 +857,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               ? "rgba(0, 0, 0, 0.8)"
               : "rgba(255, 255, 255, 0.8)"
             },
-            '& .leaflet-tile-pane, & .leaflet-bar': {
+            '& .leaflet-tile-pane .leaflet-tile, & .leaflet-tile-pane canvas, & .leaflet-bar': {
               color: "#000000",
               filter: displayMode == 'dark'
               ? 'invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%)' 
