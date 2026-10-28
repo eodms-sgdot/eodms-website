@@ -325,7 +325,7 @@ export default function App() {
           <DocumentTitle language={language} />
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
-            <Route path="/napl" element={showStagingBadge
+            <Route path="/napl" element={showStagingBadge || import.meta.env.DEV
               ? <LandingScreen experience={naplExperience} />
               : <Navigate to="/" replace />} />
             <Route path="/animations" element={<AnimationsScreen />} />

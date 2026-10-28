@@ -7,6 +7,8 @@ import { AppContext } from '../AppContext';
 import { getInitials } from '../utils/RenderingUtils';
 import { getUserProfile, handleUserProfileError, readUserProfile, updateUserProfile, type UserProfileFields } from '../services/AAAService';
 import type { TranslationKey } from '../i18n';
+import { getAxiosErrorDetails } from '../utils/HttpErrorDetails';
+import CopyErrorDetailsButton from './CopyErrorDetailsButton';
 
 // The users API expects these language values, as in the EODMS CLI.
 const PROFILE_LANGUAGES: { value: string; key: TranslationKey }[] = [
@@ -22,13 +24,21 @@ const TEXT_FIELDS: { field: keyof UserProfileFields; key: TranslationKey; type?:
 const MINIMUM_PASSWORD_BYTES = 15;
 const USER_PROFILE_ENABLED = import.meta.env.VITE_ENABLE_USER_PROFILE === 'true';
 
-type Status = { severity: 'success' | 'error'; message: string } | null;
+type Status = { severity: 'success' | 'error'; message: string; details?: string } | null;
 
-const describeError = (error: unknown, t: (key: TranslationKey) => string) => {
-  if (!axios.isAxiosError(error)) return t('profileRequestFailed');
+const describeError = (error: unknown, t: (key: TranslationKey) => string): Status => {
+  const details = getAxiosErrorDetails(error);
+  if (!axios.isAxiosError(error)) return { severity: 'error', message: t('profileRequestFailed') };
   const { key, detail } = handleUserProfileError(error);
-  return detail ? `${t(key)}: ${detail}` : t(key);
+  return { severity: 'error', message: detail ? `${t(key)}: ${detail}` : t(key), details };
 };
+
+const StatusAlert = ({ status, action }: { status: NonNullable<Status>; action?: ReactNode }) => (
+  <Alert severity={status.severity} sx={{ py: 0 }}
+    action={(action || status.details) && <>{action}{status.details && <CopyErrorDetailsButton details={status.details} />}</>}>
+    {status.message}
+  </Alert>
+);
 
 /** @param footerStart Optional action shown at the left of the button row (e.g. Terms of Use). */
 export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }) {
@@ -58,7 +68,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
       setDraft(fields);
       setStatus(null);
     } catch (error) {
-      setStatus({ severity: 'error', message: describeError(error, tRef.current) });
+      setStatus(describeError(error, tRef.current));
     } finally {
       setLoading(false);
     }
@@ -81,7 +91,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
       setEditing(false);
       setStatus({ severity: 'success', message: t('profileSaved') });
     } catch (error) {
-      setStatus({ severity: 'error', message: describeError(error, t) });
+      setStatus(describeError(error, t));
     } finally {
       setSaving(false);
     }
@@ -106,7 +116,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
       setConfirmPassword('');
       setPasswordStatus({ severity: 'success', message: t('passwordChanged') });
     } catch (error) {
-      setPasswordStatus({ severity: 'error', message: describeError(error, t) });
+      setPasswordStatus(describeError(error, t));
     } finally {
       setSaving(false);
     }
@@ -183,10 +193,8 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
             </Box>
           )}
           {status && (
-            <Alert severity={status.severity} sx={{ py: 0 }}
-              action={!saved ? <Button color="inherit" size="small" onClick={() => { setLoading(true); setStatus(null); void fetchProfile(); }}>{t('retryNow')}</Button> : undefined}>
-              {status.message}
-            </Alert>
+            <StatusAlert status={status}
+              action={!saved ? <Button color="inherit" size="small" onClick={() => { setLoading(true); setStatus(null); void fetchProfile(); }}>{t('retryNow')}</Button> : undefined} />
           )}
         </Box>
       ) : (
@@ -210,7 +218,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
               ))}
             </TextField>
           )}
-          {status && <Alert severity={status.severity} sx={{ py: 0 }}>{status.message}</Alert>}
+          {status && <StatusAlert status={status} />}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button type="button" disabled={saving} onClick={cancelEditing}>
               {t('cancel')}
@@ -237,7 +245,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
             label={t('confirmPassword')} type="password" size="small" fullWidth autoComplete="new-password" disabled={saving}
             value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
           />
-          {passwordStatus && <Alert severity={passwordStatus.severity} sx={{ py: 0 }}>{passwordStatus.message}</Alert>}
+          {passwordStatus && <StatusAlert status={passwordStatus} />}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button type="button" disabled={saving}
               onClick={() => { setNewPassword(''); setConfirmPassword(''); setPasswordStatus(null); setPasswordOpen(false); }}>

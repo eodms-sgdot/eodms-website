@@ -1,3 +1,5 @@
+import { formatHttpErrorDetails } from "../utils/HttpErrorDetails";
+
 export type NaplFlightLineIndexMap = "PDF" | "Paper";
 
 export interface NaplMediaTypeOptions {
@@ -35,27 +37,43 @@ export interface NaplOrderResponse {
 
 const API_ROOT = "/napl/v1";
 
-const readResponse = async (response: Response): Promise<Record<string, unknown>> => {
+/** Error carrying the raw HTTP exchange so users can share it with support. */
+export class NaplHttpError extends Error {
+  readonly details: string;
+
+  constructor(message: string, details: string) {
+    super(message);
+    this.name = "NaplHttpError";
+    this.details = details;
+  }
+}
+
+const readResponse = async (response: Response, method: string): Promise<Record<string, unknown>> => {
   const responseText = await response.text();
+  const fail = (message: string): never => {
+    throw new NaplHttpError(message, formatHttpErrorDetails({
+      method, url: response.url, status: response.status, statusText: response.statusText, body: responseText,
+    }));
+  };
   let payload: unknown = {};
   if (responseText.trim()) {
     try {
       payload = JSON.parse(responseText);
     } catch {
-      throw new Error(response.ok
+      fail(response.ok
         ? "NAPL order service returned a non-JSON response. Check the staging proxy configuration."
         : `NAPL order service returned HTTP ${response.status}.`);
     }
   }
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("NAPL order service returned an unexpected response.");
+    fail("NAPL order service returned an unexpected response.");
   }
   const data = payload as Record<string, unknown>;
   if (!response.ok) {
     const invalidItems = Array.isArray(data.invalid_items)
       ? ` ${data.invalid_items.join(", ")}`
       : "";
-    throw new Error(String(data.message || data.error || data.detail || `NAPL order service returned HTTP ${response.status}.${invalidItems}`));
+    fail(String(data.message || data.error || data.detail || `NAPL order service returned HTTP ${response.status}.${invalidItems}`));
   }
   return data;
 };
@@ -65,7 +83,7 @@ export async function getNaplOrderOptions(): Promise<NaplOrderOptions> {
     headers: { Accept: "application/json" },
     cache: "no-store",
   });
-  const options = await readResponse(response);
+  const options = await readResponse(response, "GET");
   const result: NaplOrderOptions = {
     media_types: Array.isArray(options.media_types) ? options.media_types.map(String) : [],
     file_formats: Array.isArray(options.file_formats) ? options.file_formats.map(String) : [],
@@ -146,5 +164,5 @@ export async function submitNaplOrder(
     body: JSON.stringify({ items }),
   });
 
-  return await readResponse(response) as NaplOrderResponse;
+  return await readResponse(response, "POST") as NaplOrderResponse;
 }

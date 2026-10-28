@@ -30,6 +30,7 @@ import type { ProcessingJob, ProcessingSubmission } from '../services/Processing
 import ScienceIcon from '@mui/icons-material/Science';
 import OrderReadyNotifier from '../components/OrderReadyNotifier';
 import PreferencesPanel from '../components/PreferencesPanel';
+import FeedbackControl from '../components/FeedbackControl';
 import { useIsMobile, getInitials } from '../utils/RenderingUtils';
 import { getItemsExtent } from '../utils/GeometryUtils';
 import { getCollection, getQueryables } from '../services/StacService';
@@ -759,6 +760,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
                 <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
+
+            <FeedbackControl isMobile={isMobile} />
 
             <PreferencesPanel 
               open={isPreferencesOpen} 

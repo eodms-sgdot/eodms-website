@@ -63,8 +63,9 @@ import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import HideImageIcon from "@mui/icons-material/HideImage";
 import ScienceIcon from "@mui/icons-material/Science";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CopyErrorDetailsButton from "./CopyErrorDetailsButton";
 import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButton";
-import { getNaplOrderOptions, normalizeNaplSelection, submitNaplOrder, type NaplOrderOptions, type NaplOrderSelection } from "../services/NaplOrderService";
+import { getNaplOrderOptions, NaplHttpError, normalizeNaplSelection, submitNaplOrder, type NaplOrderOptions, type NaplOrderSelection } from "../services/NaplOrderService";
 import type { ExplorerExperience } from "../experiences";
 import NaplContactInfo from "./NaplContactInfo";
 import { loadNaplBasket, saveNaplBasket, type NaplBasketEntry } from "../utils/NaplBasket";
@@ -349,7 +350,14 @@ export default function ResultsPanel({
   const [naplDialogOpen, setNaplDialogOpen] = useState(false);
   const [naplOptionsLoading, setNaplOptionsLoading] = useState(false);
   const [naplSubmitting, setNaplSubmitting] = useState(false);
-  const [naplError, setNaplError] = useState<string | null>(null);
+  const [naplError, setNaplErrorState] = useState<{ message: string; details?: string } | null>(null);
+  const setNaplError = (message: string | null, details?: string) => {
+    setNaplErrorState(message === null ? null : { message, details });
+  };
+  const reportNaplError = (error: unknown, fallback: string) => {
+    if (error instanceof NaplHttpError) setNaplError(error.message, error.details);
+    else setNaplError(error instanceof Error ? error.message : fallback);
+  };
   const naplItemOptions = Object.fromEntries(naplTargetItems.map(entry => [entry.id, entry.options]));
   const naplMediaLabels: Record<string, string> = {
     PaperPrint: t("naplPaperPrint"),
@@ -428,7 +436,7 @@ export default function ResultsPanel({
         ...entries,
       ]);
     } catch (error) {
-      setNaplError(error instanceof Error ? error.message : t("naplOptionsUnavailable"));
+      reportNaplError(error, t("naplOptionsUnavailable"));
     } finally {
       setNaplOptionsLoading(false);
     }
@@ -479,7 +487,7 @@ export default function ResultsPanel({
       setNaplTargetItems([]);
       if (naplTargetItems.some(item => selectedFootprints.has(item.itemId))) onClearCart();
     } catch (error) {
-      setNaplError(error instanceof Error ? error.message : t("errorOrderSubmitFailed"));
+      reportNaplError(error, t("errorOrderSubmitFailed"));
     } finally {
       setNaplSubmitting(false);
     }
@@ -1495,7 +1503,11 @@ export default function ResultsPanel({
         slotProps={{ paper: { sx: { maxWidth: 640 } } }}>
         <DialogTitle>{t("naplValise")}</DialogTitle>
         <DialogContent dividers sx={{ display: "grid", gap: 3, py: 3, px: { xs: 2, sm: 3 } }}>
-          {naplError && <Alert severity="error">{naplError}</Alert>}
+          {naplError && (
+            <Alert severity="error" action={naplError.details && <CopyErrorDetailsButton details={naplError.details} />}>
+              {naplError.message}
+            </Alert>
+          )}
           {naplStorageError && <Alert severity="warning">{t("naplValiseStorageError")}</Alert>}
           {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && naplTargetItems.map(item => naplItemOptions[item.id] && (
             <Box key={item.id} component="section" aria-labelledby={`napl-entry-${item.id}`}

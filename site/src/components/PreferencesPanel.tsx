@@ -40,7 +40,6 @@ export default function PreferencesPanel({
     baseMapId,
     setBaseMapId,
     setBaseMapLayer,
-    searchLimit,
     t,
   } = useContext(AppContext)!;
   const availableLayers = getBaseMaps();
@@ -82,32 +81,6 @@ export default function PreferencesPanel({
                     ) : (
                       <></>
                     )}
-                  </Select>
-                </Box>
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell
-                sx={{
-                  p: 1,
-                  width: "75%",
-                  maxWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <InputLabel>{t("maxResults")}: </InputLabel>
-                  <Select
-                    value={searchLimit.toString()}
-                    label={t("maxResults")}
-                    readOnly
-                    inputProps={{ "aria-label": t("maxResults") }}
-                    SelectDisplayProps={{ "aria-readonly": true }}
-                    size="small"
-                  >
-                    <MenuItem value="100">100</MenuItem>
                   </Select>
                 </Box>
               </TableCell>
