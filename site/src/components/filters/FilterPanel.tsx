@@ -37,10 +37,6 @@ export interface FilterPanelProps {
     clearFilters: () => void;
     /** The Callback fired when clicking outside the popover to close it */
     onClose: () => void;
-    /**
-     * Callback to execute a search when clicking the Apply button
-     */
-    executeSearch: () => void;
 }
 
 /**
@@ -53,8 +49,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         selectedCollections, 
         countFilters, 
         clearFilters,
-        onClose,
-        executeSearch}) => {
+        onClose}) => {
     
     const {
         stacEndpoint, 
@@ -86,11 +81,6 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
         return [valuesMap];
     }, [filters]);
-
-    const handleApply= () => {
-        executeSearch();
-        onClose();
-    };
 
     /**
      * Stores the new filter info in the AppContext
@@ -247,11 +237,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     }
 
                     <Box sx={{display: 'flex', flexDirection: 'row'}}>
-                        <Tooltip title={t('applyTooltip')}>
-                            <Button onClick={handleApply} variant="contained">
-                                {t('apply')}
-                            </Button>
-                        </Tooltip>
+                        <Button onClick={onClose} variant="contained">
+                            {t('save')}
+                        </Button>
                         {countFilters() > 0 &&
                             <Tooltip title={t('clearFiltersHover')}>
                                 <Link sx={{ display: 'flex', gap: 1, pb: 1, size:'small', cursor:'pointer', marginLeft: 'auto' }}  onClick={clearFilters}>

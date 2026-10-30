@@ -93,9 +93,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
   const { jobs: processingJobs, error: processingJobsError, refreshJobs, refreshJob, registerJob, retryJob, retryableJobIDs, jobDetailsByID, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
+  const [fixedCollectionId, setFixedCollectionId] = useState(experience.fixedCollectionId);
   const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
-    experience.fixedCollectionId
-      ? [{ id: experience.fixedCollectionId, description: '', links: [] }]
+    fixedCollectionId
+      ? [{ id: fixedCollectionId, description: '', links: [] }]
       : [],
   );
   const [zoomBounds, setZoomBounds] = useState<[number, number, number, number] | null>(null);
@@ -107,6 +108,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const replaceBboxAoi = (value: string | null) => {
     setAoiGeometry(null);
     setBbox(value);
+  };
+  const handleFixedCollectionChange = (collectionId: string) => {
+    setFixedCollectionId(collectionId);
+    setSelectedCollections([{ id: collectionId, description: '', links: [] }]);
   };
   const handleAoiImported = (geometry: AoiGeometry, bounds: [number, number, number, number]) => {
     setAoiGeometry(geometry);
@@ -470,8 +475,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
    */
   const prepareSearch = async (searchBbox?: [number, number, number, number], searchGeometry?: AoiGeometry) => {
-    const collectionIDs = experience.fixedCollectionId
-      ? [experience.fixedCollectionId]
+    const collectionIDs = fixedCollectionId
+      ? [fixedCollectionId]
       : selectedCollections.map(collection => collection.id);
 
     if (collectionIDs.length === 0) {
@@ -828,7 +833,8 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         }}>
           <Drawer variant="persistent" anchor="left" open={leftOpen} sx={{ width: leftOpen ? calcDrawerWidth() : 0, flexShrink: 0, '& .MuiDrawer-paper': { width: calcDrawerWidth(), position: 'relative', boxShadow: `${TOP_TUCK_SHADOW}, 4px 0 12px -4px rgba(0,0,0,0.3)` } }}>
             <SearchPanel 
-              stacEndpoint={stacEndpoint} fixedCollectionId={experience.fixedCollectionId}
+              stacEndpoint={stacEndpoint} fixedCollectionId={fixedCollectionId}
+              showNaplCollectionToggle={experience.id === 'napl'} onFixedCollectionChange={handleFixedCollectionChange}
               selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
               searchLimit={searchLimit} setSearchLimit={setSearchLimit} searchTemporal={searchTemporal} setSearchTemporal={setSearchTemporal}
               startDate={searchStartDate} setStartDate={setSearchStartDate} endDate={searchEndDate} setEndDate={setSearchEndDate} 
@@ -872,7 +878,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               : 'none',
             } 
           }}>
-            <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} aoiGeometry={aoiGeometry} onAoiImported={handleAoiImported} onAoiDrawn={handleSearch} onLocationSelected={(locationBbox) => { replaceBboxAoi(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
+            <StacMap clearAoiTrigger={clearAoiTrigger} aoiBbox={bbox} aoiGeometry={aoiGeometry} onAoiImported={handleAoiImported} onLocationSelected={(locationBbox) => { replaceBboxAoi(locationBbox.join(',')); }} zoomBounds={zoomBounds} onZoomToResults={handleZoomToResults}
               searchResults={searchResults} selectedFootprints={selectedFootprints} onFeatureClick={handleMapFeatureClick} focusedItem={focusedItem}
               hoveredItem={hoveredItem} onHoverItem={setHoveredItem}
               activeThumbnails={activeThumbnails} setBbox={replaceBboxAoi}

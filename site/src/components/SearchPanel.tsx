@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar, Chip } from '@mui/material';
+import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar, Chip, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -24,6 +24,10 @@ export interface SearchPanelProps {
   stacEndpoint: string;
   /** Collection ID enforced by a fixed-collection experience */
   fixedCollectionId?: string;
+  /** Show the NAPL collection mode selector above Search */
+  showNaplCollectionToggle?: boolean;
+  /** Change the collection targeted by a fixed-collection experience */
+  onFixedCollectionChange?: (collectionId: string) => void;
   /** Array of collections currently selected by the user */
   selectedCollections: STACCollection[];
   /** State setter for updating the selected collections */
@@ -118,7 +122,7 @@ const getCollectionTimelineSegments = (collection: STACCollection, scale: Collec
  * @returns {JSX.Element} The rendered Search Panel drawer content.
  */
 export default function SearchPanel({ 
-  stacEndpoint, fixedCollectionId, selectedCollections, setSelectedCollections,
+  stacEndpoint, fixedCollectionId, showNaplCollectionToggle, onFixedCollectionChange, selectedCollections, setSelectedCollections,
   searchTemporal, setSearchTemporal, startDate, setStartDate, endDate, setEndDate, supportsSearch,
   supportsSorting, sortby, setSortby, executeSearch, getSearchUrl
 }: SearchPanelProps) {
@@ -188,7 +192,9 @@ export default function SearchPanel({
       try {
         const collectionAuthToken = authToken ? await getValidAuthToken() : null;
         if (fixedCollectionId) {
-          const collection = await getCollection(stacEndpoint, fixedCollectionId, collectionAuthToken);
+          const collection = fixedCollectionId === 'OpenNAPL'
+            ? { id: fixedCollectionId, description: '', links: [] }
+            : await getCollection(stacEndpoint, fixedCollectionId, collectionAuthToken);
           if (cancelled) return;
           setCollections(keepIfSame([collection]));
           if (!silent) setSelectedCollections([collection]);
@@ -370,7 +376,6 @@ export default function SearchPanel({
           countFilters={countFilters}
           clearFilters={clearFilters}
           onClose={() => setFilterButtonEl(null)}
-          executeSearch={executeSearch}
         />
       </Blind>
 
@@ -461,6 +466,26 @@ export default function SearchPanel({
       ) : null}
 
       <Divider />
+      {showNaplCollectionToggle && (
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          size="small"
+          value={fixedCollectionId}
+          onChange={(_, collectionId: string | null) => {
+            if (collectionId) onFixedCollectionChange?.(collectionId);
+          }}
+          aria-label={t('naplCollectionMode')}
+          sx={{ mx: 2, mt: 1.5, width: 'auto' }}
+        >
+          <ToggleButton value="OpenNAPL" aria-label={t('naplOpenCollectionMode')} title={t('naplOpenCollectionMode')} sx={{ flex: 1, whiteSpace: 'nowrap', fontSize: '0.75rem', lineHeight: 1.2, px: 0.5 }}>
+            {t('naplOpenCollectionShort')}
+          </ToggleButton>
+          <ToggleButton value="NAPL" aria-label={t('naplPaidCollectionMode')} title={t('naplPaidCollectionMode')} sx={{ flex: 1, whiteSpace: 'nowrap', fontSize: '0.75rem', lineHeight: 1.2, px: 0.5 }}>
+            {t('naplPaidCollectionShort')}
+          </ToggleButton>
+        </ToggleButtonGroup>
+      )}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, m: 2 }}>
       <Button
         variant="contained"
@@ -470,6 +495,7 @@ export default function SearchPanel({
       >
         {t("search")}
       </Button>
+      {!showNaplCollectionToggle && (
       <Tooltip title={t('copySearchUrl')}>
         <span>
           <IconButton aria-label={t('copySearchUrl')} disabled={copying} onClick={async () => {
@@ -492,6 +518,7 @@ export default function SearchPanel({
           </IconButton>
         </span>
       </Tooltip>
+      )}
       </Box>
       <Snackbar open={!!copyNotice} autoHideDuration={4000} onClose={() => setCopyNotice(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={copyNotice?.severity} onClose={() => setCopyNotice(null)}>{copyNotice?.message}</Alert>

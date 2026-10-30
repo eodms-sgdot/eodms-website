@@ -51,8 +51,6 @@ const ARCTIC_VIEW_BOUNDS = L.latLngBounds(
  * Properties for the StacMap component.
  */
 interface StacMapProps {
-  /** Callback fired when a user successfully draws a rectangle on the map. Returns [W, S, E, N] */
-  onAoiDrawn: (bbox: [number, number, number, number], zoomToResults?: boolean) => void;
   /** Callback fired when a user selects a search result from GeoSearch */
   onLocationSelected: (bbox: [number, number, number, number]) => void;
   /** Bounding box coordinates used to programmatically animate and zoom the map */
@@ -301,7 +299,7 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     map.addControl(drawControl);
     const controlContainer = drawControl.getContainer();
     if (controlContainer) {
-      controlContainer.classList.add('stac-aoi-control', 'leaflet-bar');
+      controlContainer.classList.add('stac-aoi-control');
       controlContainer.querySelectorAll('.leaflet-draw-toolbar').forEach(toolbar => toolbar.classList.remove('leaflet-bar'));
       const uploadSlot = L.DomUtil.create('div', 'stac-aoi-import-slot');
       controlContainer.prepend(uploadSlot);
@@ -319,6 +317,10 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     };
     drawnItems.on('layeradd layerremove', updateDeleteButtonState);
     updateDeleteButtonState();
+    const hideDeleteBadge = () => controlContainer?.classList.add('stac-actions-open');
+    const showDeleteBadge = () => controlContainer?.classList.remove('stac-actions-open');
+    map.on(L.Draw.Event.TOOLBAROPENED, hideDeleteBadge);
+    map.on(L.Draw.Event.TOOLBARCLOSED, showDeleteBadge);
 
     const drawToolbar = drawControl.getContainer()?.querySelector('.leaflet-draw-toolbar');
     if (drawToolbar instanceof HTMLElement) {
@@ -385,6 +387,8 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     
     return () => { 
       drawnItems.off('layeradd layerremove', updateDeleteButtonState);
+      map.off(L.Draw.Event.TOOLBAROPENED, hideDeleteBadge);
+      map.off(L.Draw.Event.TOOLBARCLOSED, showDeleteBadge);
       setImportContainer(null);
       map.removeControl(drawControl); 
       map.off(L.Draw.Event.CREATED, onDrawCreated); 
@@ -418,11 +422,10 @@ function createPointSearchBbox(longitude: number, latitude: number): [number, nu
 }
 
 /**
- * Drops a crosshair with a "Search here" chip wherever the user clicks on empty map.
+ * Drops a crosshair with a "Search here" chip wherever the user right-clicks on empty map.
  * Ignores clicks that finish a draw, edit or delete gesture.
  */
-function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, drawnItemsRef, label, color }: {
-  onSearchHere: (longitude: number, latitude: number) => void;
+function ClickToSearch({ onCancel, onCandidateSelected, drawnItemsRef, label, color }: {
   onCancel: () => void;
   onCandidateSelected: (longitude: number, latitude: number) => void;
   drawnItemsRef: React.RefObject<L.FeatureGroup>;
@@ -465,15 +468,22 @@ function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, drawnItems
     const onToolStart = () => { toolActive = true; updatePoint(null); };
     const onToolStop = () => { toolActive = false; toolStoppedAt = Date.now(); };
     // The click that ends a rectangle drag arrives just after draw:drawstop.
-    const onClick = (e: L.LeafletMouseEvent) => {
+    const onContextMenu = (e: L.LeafletMouseEvent) => {
       if (drawnItems.getLayers().length > 0) return;
       const target = e.originalEvent.target;
       if (target instanceof Element && target.closest('.stac-result-layer-control, .leaflet-control, .leaflet-interactive, .leaflet-marker-icon')) return;
-      if (!toolActive && Date.now() - toolStoppedAt > 300) {
-        const candidate = e.latlng.wrap();
-        updatePoint(candidate);
-        onCandidateSelected(candidate.lng, candidate.lat);
-      }
+      if (toolActive || Date.now() - toolStoppedAt <= 300) return;
+      L.DomEvent.preventDefault(e.originalEvent);
+      const candidate = e.latlng.wrap();
+      updatePoint(candidate);
+      onCandidateSelected(candidate.lng, candidate.lat);
+    };
+    const onMapClick = (e: L.LeafletMouseEvent) => {
+      if (!pointRef.current) return;
+      const target = e.originalEvent.target;
+      if (target instanceof Element && target.closest('.stac-result-layer-control, .leaflet-control, .leaflet-marker-icon')) return;
+      updatePoint(null);
+      onCancel();
     };
     const onKeyDown = (e: L.LeafletKeyboardEvent) => {
       if (e.originalEvent.key === 'Escape' && pointRef.current) {
@@ -486,12 +496,14 @@ function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, drawnItems
     const stopEvents = [L.Draw.Event.DRAWSTOP, L.Draw.Event.EDITSTOP, L.Draw.Event.DELETESTOP];
     startEvents.forEach(ev => map.on(ev, onToolStart));
     stopEvents.forEach(ev => map.on(ev, onToolStop));
-    map.on('click', onClick);
+    map.on('contextmenu', onContextMenu);
+    map.on('click', onMapClick);
     map.on('keydown', onKeyDown);
     return () => {
       startEvents.forEach(ev => map.off(ev, onToolStart));
       stopEvents.forEach(ev => map.off(ev, onToolStop));
-      map.off('click', onClick);
+      map.off('contextmenu', onContextMenu);
+      map.off('click', onMapClick);
       map.off('keydown', onKeyDown);
     };
   }, [map, onCancel, onCandidateSelected, drawnItemsRef]);
@@ -504,7 +516,7 @@ function ClickToSearch({ onSearchHere, onCancel, onCandidateSelected, drawnItems
       title={label}
       alt={label}
       zIndexOffset={2000}
-      eventHandlers={{ click: () => { onSearchHere(point.lng, point.lat); updatePoint(null); } }}
+      eventHandlers={{ click: () => { onCandidateSelected(point.lng, point.lat); updatePoint(null); } }}
     />
   );
 }
@@ -585,7 +597,9 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]!));
 
-const footprintStyles = (
+const FootprintStyles = () => {
+  const theme = useTheme();
+  return (
   <GlobalStyles styles={{
     '@keyframes stacFootprintIn': {
       from: { opacity: 0, transform: 'scale(0.85)' },
@@ -634,9 +648,9 @@ const footprintStyles = (
       transition: 'filter 120ms ease',
     },
     '.stac-aoi-control': {
-      border: '2px solid rgba(0,0,0,0.2)',
+      border: `2px solid ${theme.palette.divider}`,
       borderRadius: 4,
-      backgroundColor: '#fff',
+      backgroundColor: theme.palette.background.paper,
       backgroundClip: 'padding-box',
     },
     '.stac-aoi-control .leaflet-draw-toolbar': {
@@ -645,17 +659,27 @@ const footprintStyles = (
       boxShadow: 'none',
       marginTop: 0,
     },
-    '.stac-aoi-control .leaflet-draw-toolbar a': {
+    '.stac-aoi-control .leaflet-draw-toolbar > a': {
       width: 30,
       height: 30,
       lineHeight: '30px',
       borderRadius: 0,
-      borderBottom: '1px solid #ccc',
+      borderBottom: `1px solid ${theme.palette.divider}`,
+      backgroundColor: theme.palette.background.paper,
+      color: theme.palette.text.primary,
+    },
+    '.stac-aoi-control .leaflet-draw-toolbar > a:hover, .stac-aoi-control .leaflet-draw-actions a:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
+    '.stac-aoi-control .leaflet-draw-actions a': {
+      backgroundColor: theme.palette.background.paper,
+      borderLeft: `1px solid ${theme.palette.divider}`,
+      color: theme.palette.text.primary,
     },
     '.stac-aoi-control .stac-aoi-import-slot': {
       width: 30,
       height: 30,
-      borderBottom: '1px solid #ccc',
+      borderBottom: `1px solid ${theme.palette.divider}`,
     },
     '.stac-aoi-control .leaflet-draw-edit-remove': {
       borderBottom: 0,
@@ -684,6 +708,9 @@ const footprintStyles = (
     '.leaflet-draw-toolbar .leaflet-draw-edit-remove.leaflet-disabled::before': {
       backgroundColor: '#757575',
     },
+      '.stac-aoi-control.stac-actions-open .leaflet-draw-edit-remove::before': {
+        display: 'none',
+      },
     '.leaflet-draw-toolbar .leaflet-draw-edit-remove.stac-delete-available': {
       backgroundImage: 'none',
     },
@@ -710,7 +737,8 @@ const footprintStyles = (
       '.stac-footprint, .stac-search-here .chip, .stac-search-here .pulse': { animation: 'none', transition: 'none' },
     },
   }} />
-);
+  );
+};
 
 export default function StacMap(props: StacMapProps) {
   const { baseMapLayer } = useContext(AppContext)!;
@@ -719,7 +747,7 @@ export default function StacMap(props: StacMapProps) {
   return <ProjectedStacMap key={baseMapLayer?.type === "wmts" ? "arctic" : "mercator"} {...props} previousViewRequestRef={previousViewRequestRef} />;
 }
 
-function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, focusedItem = null, hoveredItem = null, onHoverItem, activeThumbnails = {}, clearAoiTrigger, aoiBbox, aoiGeometry, onAoiImported, setBbox, previousViewRequestRef }: StacMapProps & {
+function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, searchResults = [], selectedFootprints = EMPTY_SET, onFeatureClick, focusedItem = null, hoveredItem = null, onHoverItem, activeThumbnails = {}, clearAoiTrigger, aoiBbox, aoiGeometry, onAoiImported, setBbox, previousViewRequestRef }: StacMapProps & {
   previousViewRequestRef: React.RefObject<MapViewRequest | null>;
 }) {
   const theme = useTheme();
@@ -779,16 +807,9 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
     setBbox(null);
   }, [setBbox]);
 
-  const searchAroundPoint = (longitude: number, latitude: number, zoom: boolean) => {
-    const bbox = createPointSearchBbox(longitude, latitude);
-    replacePointAoi(bbox);
-    if (zoom) setCoordinateZoomBounds(bbox);
-    onAoiDrawn(bbox, true);
-  };
-  
   return (
     <>
-    {footprintStyles}
+    <FootprintStyles />
     <MapContainer
       center={[56.13, -106.34]}
       zoom={4}
@@ -821,7 +842,7 @@ function ProjectedStacMap({ onAoiDrawn, onLocationSelected, zoomBounds, onZoomTo
       <ClearAoiController trigger={clearAoiTrigger} drawnItemsRef={drawnItemsRef} />
       <MapZoomController basemap={baseMapLayer} bounds={zoomBounds} coordinateBounds={coordinateZoomBounds} previousRequestRef={previousViewRequestRef} />
       <FootprintDensityController items={searchResults} onDensityChange={handleDensityChange} />
-      <ClickToSearch onSearchHere={(lon, lat) => searchAroundPoint(lon, lat, false)} onCancel={handleCancelSearchHere} onCandidateSelected={handleCandidateSelected} drawnItemsRef={drawnItemsRef} label={t('searchHere')} color={brandColor} />
+      <ClickToSearch onCancel={handleCancelSearchHere} onCandidateSelected={handleCandidateSelected} drawnItemsRef={drawnItemsRef} label={t('searchHere')} color={brandColor} />
 
       <div ref={resultLayerControlRef} className="stac-result-layer-control" style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
         <ToggleButtonGroup

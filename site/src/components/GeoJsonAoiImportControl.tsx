@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Alert, CircularProgress, IconButton, Snackbar, Tooltip } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined';
 import L from 'leaflet';
 import { useMap } from 'react-leaflet';
@@ -14,6 +15,7 @@ interface GeoJsonAoiImportControlProps {
 
 export default function GeoJsonAoiImportControl({ container, onImport }: GeoJsonAoiImportControlProps) {
   const map = useMap();
+  const theme = useTheme();
   const { t } = useContext(AppContext)!;
   const inputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef(0);
@@ -32,7 +34,7 @@ export default function GeoJsonAoiImportControl({ container, onImport }: GeoJson
     <Tooltip title={t('importGeoJsonAoiTooltip')} placement="right" slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line' } } }}>
       <span>
         <IconButton aria-label={t('importGeoJsonAoi')} disabled={loading} onClick={() => inputRef.current?.click()}
-          sx={{ width: 30, height: 30, borderRadius: 0, color: '#333', bgcolor: '#fff', '&:hover': { bgcolor: '#f4f4f4' } }}>
+          sx={{ width: 30, height: 30, borderRadius: 0, color: 'text.primary', bgcolor: 'background.paper', '&:hover': { bgcolor: theme.palette.action.hover } }}>
           {loading ? <CircularProgress size={18} /> : <FileUploadOutlinedIcon fontSize="small" />}
         </IconButton>
       </span>

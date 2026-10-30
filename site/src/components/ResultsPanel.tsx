@@ -1645,13 +1645,32 @@ export default function ResultsPanel({
           )}
           <Table size="small">
             <TableBody>
-              {activeMetadata &&
-                Object.entries(activeMetadata.properties).map(([k, v]) => (
+              {activeMetadata && <>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: "bold" }}>{t("uuid")}</TableCell>
+                  <TableCell>{activeMetadata.id}</TableCell>
+                </TableRow>
+                {activeMetadata.links.find(link => link.rel === "self") && (
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: "bold" }}>{t("stacPage")}</TableCell>
+                    <TableCell>
+                      <Link
+                        href={activeMetadata.links.find(link => link.rel === "self")?.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {t("stacPage")}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {Object.entries(activeMetadata.properties).map(([k, v]) => (
                   <TableRow key={k}>
                     <TableCell sx={{ fontWeight: "bold" }}>{k}</TableCell>
                     <TableCell>{String(v)}</TableCell>
                   </TableRow>
                 ))}
+              </>}
             </TableBody>
           </Table>
         </DialogContent>
