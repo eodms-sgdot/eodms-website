@@ -1,6 +1,7 @@
 interface EndpointMap {
   eodmsDomain: string;
   productionDomain: string;
+  targetEnvironment?: string;
 }
 
 export function isStagingEndpoint(
@@ -8,6 +9,7 @@ export function isStagingEndpoint(
   isDevelopment: boolean,
   endpointMap: EndpointMap,
 ): boolean {
+  if (isDevelopment && endpointMap.targetEnvironment === 'proxy') return false;
   const directStacEndpoint = /^https?:\/\//i.test(stacEndpoint);
   const activeStacOrigin = directStacEndpoint
     ? new URL(stacEndpoint).origin

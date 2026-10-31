@@ -12,23 +12,31 @@ const localEnvFile = path.resolve(__dirname, '../.env.local')
 if (fs.existsSync(localEnvFile)) process.loadEnvFile(localEnvFile)
 
 const targetEnvironment = (process.env.EODMS_TARGET_ENV || 'staging').toLowerCase()
-if (!['staging', 'production'].includes(targetEnvironment)) {
-    throw new Error('EODMS_TARGET_ENV must be either staging or production')
+if (!['staging', 'production', 'proxy'].includes(targetEnvironment)) {
+    throw new Error('EODMS_TARGET_ENV must be staging, production, or proxy')
 }
 
-const configuredDomain = targetEnvironment === 'production'
-    ? process.env.EODMS_PRODUCTION_DOMAIN || 'https://eodms-sgdot.nrcan-rncan.gc.ca'
-    : process.env.EODMS_STAGING_DOMAIN
-if (!configuredDomain) {
+const proxyPort = process.env.EODMS_PROXY_PORT
+if (process.env.EODMS_AAA_TUNNEL_PORT) {
+    throw new Error('EODMS_AAA_TUNNEL_PORT is no longer supported. Use EODMS_TARGET_ENV=proxy and EODMS_PROXY_PORT to route all APIs together.')
+}
+if (targetEnvironment === 'proxy' && (!proxyPort || !Number.isInteger(Number(proxyPort)) || Number(proxyPort) < 1 || Number(proxyPort) > 65535)) {
+    throw new Error('EODMS_TARGET_ENV=proxy requires EODMS_PROXY_PORT to be a valid TCP port')
+}
+if (targetEnvironment !== 'proxy' && proxyPort) {
+    throw new Error('Set EODMS_TARGET_ENV=proxy when using EODMS_PROXY_PORT')
+}
+
+const configuredDomain = targetEnvironment === 'proxy'
+    ? `http://127.0.0.1:${proxyPort}`
+    : targetEnvironment === 'production'
+        ? process.env.EODMS_PRODUCTION_DOMAIN || 'https://eodms-sgdot.nrcan-rncan.gc.ca'
+        : process.env.EODMS_STAGING_DOMAIN
+if (!configuredDomain && targetEnvironment !== 'proxy') {
     throw new Error('Set EODMS_STAGING_DOMAIN in site/.env.local for local staging AAA proxying')
 }
 const eodmsDomain = configuredDomain.replace(/\/+$/, '')
-
-const aaaTunnelPort = process.env.EODMS_AAA_TUNNEL_PORT
-if (aaaTunnelPort && (!Number.isInteger(Number(aaaTunnelPort)) || Number(aaaTunnelPort) < 1 || Number(aaaTunnelPort) > 65535)) {
-    throw new Error('EODMS_AAA_TUNNEL_PORT must be a valid TCP port')
-}
-const aaaDomain = aaaTunnelPort ? `http://127.0.0.1:${aaaTunnelPort}` : eodmsDomain
+const aaaDomain = eodmsDomain
 
 const app = express()
 
@@ -91,6 +99,16 @@ const proxyUser = (req, res) => {
         res.status(status).send(error.response?.data ?? {'message' : error.message, 'code' : error.code, 'status' : error.status})
     })
 }
+app.post('/aaa/v1/users', (req, res) => {
+    axios.post(`${aaaDomain}/aaa/v1/users`, req.body)
+        .then(response => res.status(response.status).send(response.data))
+        .catch(error => {
+            const status = error.response?.status || error.status || 500;
+            const retryAfter = error.response?.headers?.['retry-after'];
+            if (retryAfter) res.set('Retry-After', retryAfter)
+            res.status(status).send(error.response?.data ?? {'message' : error.message, 'code' : error.code, 'status' : error.status})
+        })
+})
 app.get('/aaa/v1/users/:username', proxyUser)
 app.patch('/aaa/v1/users/:username', proxyUser)
 

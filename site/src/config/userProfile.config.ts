@@ -1,0 +1,1 @@
+export const USER_PROFILE_ENABLED = import.meta.env.VITE_ENABLE_USER_PROFILE === 'true';

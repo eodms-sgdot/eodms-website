@@ -1,11 +1,12 @@
 import { useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Alert, Avatar, Box, Button, CircularProgress, Collapse, Divider, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Avatar, Box, Button, CircularProgress, Collapse, Divider, MenuItem, Tab, Tabs, TextField, Typography } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import { getInitials } from '../utils/RenderingUtils';
-import { getUserProfile, handleUserProfileError, readUserProfile, updateUserProfile, type UserProfileFields } from '../services/AAAService';
+import { getUserProfile, handleUserProfileError, readUserProfile, updateUserProfile, type UserAddressRequest, type UserProfileFields } from '../services/AAAService';
+import { USER_PROFILE_ENABLED } from '../config/userProfile.config';
 import type { TranslationKey } from '../i18n';
 import { getAxiosErrorDetails } from '../utils/HttpErrorDetails';
 import CopyErrorDetailsButton from './CopyErrorDetailsButton';
@@ -15,15 +16,26 @@ const PROFILE_LANGUAGES: { value: string; key: TranslationKey }[] = [
   { value: 'English', key: 'profileLanguageEnglish' },
   { value: 'French', key: 'profileLanguageFrench' },
 ];
-const TEXT_FIELDS: { field: keyof UserProfileFields; key: TranslationKey; type?: string; autoComplete: string }[] = [
+const TEXT_FIELDS: { field: keyof Omit<UserProfileFields, 'address' | 'billing_address' | 'shipping_address'>; key: TranslationKey; type?: string; autoComplete: string }[] = [
   { field: 'given_name', key: 'givenName', autoComplete: 'given-name' },
   { field: 'surname', key: 'surname', autoComplete: 'family-name' },
   { field: 'email', key: 'email', type: 'email', autoComplete: 'email' },
-  { field: 'address', key: 'address', autoComplete: 'street-address' },
+];
+const ADDRESS_FIELDS: { field: Exclude<keyof UserAddressRequest, '@type'>; key: TranslationKey; autoComplete: string }[] = [
+  { field: 'street-address', key: 'streetAddress', autoComplete: 'street-address' },
+  { field: 'city', key: 'city', autoComplete: 'address-level2' },
+  { field: 'province', key: 'province', autoComplete: 'address-level1' },
+  { field: 'country', key: 'country', autoComplete: 'country-name' },
+  { field: 'postal-code', key: 'postalCode', autoComplete: 'postal-code' },
+];
+type AddressType = 'main' | 'business' | 'shipping';
+type AddressProfileField = 'address' | 'billing_address' | 'shipping_address';
+const ADDRESS_EDITOR_TYPES: { type: AddressType; field: AddressProfileField; key: TranslationKey }[] = [
+  { type: 'main', field: 'address', key: 'mainAddressTab' },
+  { type: 'business', field: 'billing_address', key: 'businessAddressTab' },
+  { type: 'shipping', field: 'shipping_address', key: 'shippingAddressTab' },
 ];
 const MINIMUM_PASSWORD_BYTES = 15;
-const USER_PROFILE_ENABLED = import.meta.env.VITE_ENABLE_USER_PROFILE === 'true';
-
 type Status = { severity: 'success' | 'error'; message: string; details?: string } | null;
 
 const describeError = (error: unknown, t: (key: TranslationKey) => string): Status => {
@@ -40,6 +52,14 @@ const StatusAlert = ({ status, action }: { status: NonNullable<Status>; action?:
   </Alert>
 );
 
+const formatAddress = (profile: UserProfileFields, t: (key: TranslationKey) => string) =>
+  ADDRESS_EDITOR_TYPES.map(({ field, key }) => {
+    const address = profile[field];
+    const details = address && ADDRESS_FIELDS.map(({ field: addressField }) => address[addressField]?.trim())
+      .filter((part): part is string => !!part).join(', ');
+    return details ? `${t(key)}: ${details}` : '';
+  }).filter(Boolean).join('\n');
+
 /** @param footerStart Optional action shown at the left of the button row (e.g. Terms of Use). */
 export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }) {
   const { username, usersEndpoint, getValidAuthToken, setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setIsAuthOpen, setAuthErrorMessage, t } = useContext(AppContext)!;
@@ -53,6 +73,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordStatus, setPasswordStatus] = useState<Status>(null);
+  const [activeAddressType, setActiveAddressType] = useState<AddressType>('main');
   // Token refreshes change this function; a ref keeps them from reloading the profile over unsaved edits.
   const getTokenRef = useRef(getValidAuthToken);
   useEffect(() => { getTokenRef.current = getValidAuthToken; });
@@ -76,8 +97,20 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
 
   useEffect(() => { void fetchProfile(); }, [fetchProfile]);
 
-  const changes = Object.fromEntries(Object.entries(draft)
-    .filter(([field, value]) => value !== undefined && value !== saved?.[field as keyof UserProfileFields])) as UserProfileFields;
+  const changes: UserProfileFields = {};
+  const addressChanges: Partial<Record<AddressProfileField, UserAddressRequest>> = {};
+  for (const { field } of TEXT_FIELDS) {
+    const value = draft[field];
+    if (value !== undefined && value !== saved?.[field]) changes[field] = value;
+  }
+  for (const { field } of ADDRESS_EDITOR_TYPES) {
+    const value = draft[field];
+    if (value && JSON.stringify(value) !== JSON.stringify(saved?.[field])) addressChanges[field] = value;
+  }
+  Object.assign(changes, addressChanges);
+  if (saved?.language !== undefined && draft.language !== undefined && draft.language !== saved.language) {
+    changes.language = draft.language;
+  }
   const hasChanges = Object.keys(changes).length > 0;
 
   const saveProfile = async (event: FormEvent) => {
@@ -87,7 +120,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
     setStatus(null);
     try {
       await updateUserProfile(usersEndpoint, username, await getValidAuthToken(), changes);
-      setSaved(previous => ({ ...previous, ...changes }));
+      setSaved(previous => previous ? { ...previous, ...changes } : previous);
       setEditing(false);
       setStatus({ severity: 'success', message: t('profileSaved') });
     } catch (error) {
@@ -114,6 +147,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
       await updateUserProfile(usersEndpoint, username, await getValidAuthToken(), { password: newPassword });
       setNewPassword('');
       setConfirmPassword('');
+      setPasswordOpen(false);
       setPasswordStatus({ severity: 'success', message: t('passwordChanged') });
     } catch (error) {
       setPasswordStatus(describeError(error, t));
@@ -135,13 +169,22 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
   const startEditing = () => {
     if (!saved) return;
     setDraft(saved);
+    setActiveAddressType('main');
     setStatus(null);
     setEditing(true);
   };
   const cancelEditing = () => {
     if (saved) setDraft(saved);
+    setActiveAddressType('main');
     setStatus(null);
     setEditing(false);
+  };
+
+  const updateAddressField = (profileField: AddressProfileField, field: Exclude<keyof UserAddressRequest, '@type'>, value: string) => {
+    setDraft(previous => ({
+      ...previous,
+      [profileField]: { ...previous[profileField], [field]: value },
+    }));
   };
 
   return (
@@ -184,6 +227,14 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
                   </Typography>
                 </Box>
               ))}
+              {ADDRESS_EDITOR_TYPES.some(({ field }) => saved[field] !== undefined) && (
+                <>
+                  <Typography component="dt" variant="body2" color="text.secondary">{t('address')}</Typography>
+                  <Typography component="dd" variant="body2" sx={{ m: 0, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
+                    {formatAddress(saved, t) || '—'}
+                  </Typography>
+                </>
+              )}
               {saved.language !== undefined && (
                 <>
                   <Typography component="dt" variant="body2" color="text.secondary">{t('language')}</Typography>
@@ -202,22 +253,37 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
           {shownFields.map(({ field, key, type, autoComplete }) => (
             <TextField
               key={field} label={t(key)} size="small" fullWidth type={type} autoComplete={autoComplete}
-              multiline={field === 'address'} disabled={saving}
+              disabled={saving}
               value={draft[field] ?? ''}
-              onChange={(e) => setDraft(previous => ({ ...previous, [field]: e.target.value }))}
+              onChange={(event) => setDraft(previous => ({ ...previous, [field]: event.target.value }))}
             />
           ))}
           {saved?.language !== undefined && (
             <TextField
               select label={t('language')} size="small" fullWidth disabled={saving}
               value={draft.language ?? ''}
-              onChange={(e) => setDraft(previous => ({ ...previous, language: e.target.value }))}
+              onChange={(event) => setDraft(previous => ({ ...previous, language: event.target.value }))}
             >
               {languageOptions.map(option => (
                 <MenuItem key={option.value} value={option.value}>{option.key ? t(option.key) : option.value}</MenuItem>
               ))}
             </TextField>
           )}
+          <Tabs
+            value={activeAddressType}
+            onChange={(_, type: AddressType) => setActiveAddressType(type)}
+            variant="fullWidth"
+            aria-label={t('address')}
+          >
+            {ADDRESS_EDITOR_TYPES.map(({ type, key }) => <Tab key={type} value={type} label={t(key)} />)}
+          </Tabs>
+          {ADDRESS_FIELDS.map(({ field, key, autoComplete }) => (
+            <TextField
+              key={field} label={t(key)} size="small" fullWidth autoComplete={autoComplete} disabled={saving}
+              value={draft[ADDRESS_EDITOR_TYPES.find(option => option.type === activeAddressType)!.field]?.[field] ?? ''}
+              onChange={(event) => updateAddressField(ADDRESS_EDITOR_TYPES.find(option => option.type === activeAddressType)!.field, field, event.target.value)}
+            />
+          ))}
           {status && <StatusAlert status={status} />}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button type="button" disabled={saving} onClick={cancelEditing}>
@@ -234,6 +300,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
         sx={{ mt: 1, ml: -0.5, textTransform: 'none' }}>
         {t('changePassword')}
       </Button>
+      {!passwordOpen && passwordStatus?.severity === 'success' && <StatusAlert status={passwordStatus} />}
       <Collapse in={passwordOpen} unmountOnExit>
         <Box component="form" onSubmit={changePassword} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
           <TextField
@@ -245,7 +312,7 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
             label={t('confirmPassword')} type="password" size="small" fullWidth autoComplete="new-password" disabled={saving}
             value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
           />
-          {passwordStatus && <StatusAlert status={passwordStatus} />}
+          {passwordStatus?.severity === 'error' && <StatusAlert status={passwordStatus} />}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button type="button" disabled={saving}
               onClick={() => { setNewPassword(''); setConfirmPassword(''); setPasswordStatus(null); setPasswordOpen(false); }}>

@@ -7,9 +7,32 @@ export interface UserProfileFields {
     given_name?: string;
     surname?: string;
     email?: string;
-    address?: string;
+    address?: UserAddressRequest;
+    billing_address?: UserAddressRequest;
+    shipping_address?: UserAddressRequest;
     language?: string;
 }
+
+export interface UserAddressRequest {
+    'street-address'?: string;
+    city?: string;
+    province?: string;
+    country?: string;
+    'postal-code'?: string;
+}
+
+export interface CreateUserAccountPayload {
+    username: string;
+    password: string;
+    given_name: string;
+    surname: string;
+    email: string;
+    language: 'English' | 'French';
+}
+
+/** Creates an account through the public AAA users endpoint. */
+export const createUserAccount = async (usersEndpoint: string, payload: CreateUserAccountPayload): Promise<unknown> =>
+    (await axios.post(usersEndpoint, payload, { withCredentials: true })).data;
 
 const userUrl = (usersEndpoint: string, username: string) =>
     `${usersEndpoint.replace(/\/+$/, '')}/${encodeURIComponent(username)}`;
@@ -37,17 +60,41 @@ const pick = (source: unknown, ...path: string[]) => path.reduce<unknown>((value
 // Non-text values (e.g. a structured address) come back undefined so they are left alone.
 const text = (value: unknown) => typeof value === 'string' ? value : value == null ? '' : undefined;
 
+const readAddressObject = (candidate: unknown): UserAddressRequest | undefined => {
+    if (typeof candidate === 'string') return { 'street-address': candidate };
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return undefined;
+
+    const source = candidate as Record<string, unknown>;
+    const address: UserAddressRequest = {};
+    for (const field of ['street-address', 'city', 'province', 'country', 'postal-code'] as const) {
+        if (typeof source[field] === 'string') address[field] = source[field] as string;
+    }
+    return address;
+};
+
 /**
  * Flattens a profile response, nested (`personal-information`) or flat, into patchable fields.
  */
 export function readUserProfile(profile: unknown): UserProfileFields {
+    const personal = ['personal-information'];
     const name = ['personal-information', 'identification', 'name'];
     const contact = ['personal-information', 'contact-information'];
+    const mainAddress = pick(profile, ...contact, 'address') ?? pick(profile, ...personal, 'address') ?? pick(profile, 'address');
+    const legacyAddressArray = Array.isArray(mainAddress) ? mainAddress : [];
+    const legacyAddress = (type: 'main' | 'billing' | 'shipping') => legacyAddressArray.find(item =>
+        !!item && typeof item === 'object' && (item as Record<string, unknown>)['@type'] === type,
+    );
     return {
-        given_name: text(pick(profile, ...name, 'given-name') ?? pick(profile, 'given_name')),
-        surname: text(pick(profile, ...name, 'surname') ?? pick(profile, 'surname')),
-        email: text(pick(profile, ...contact, 'email') ?? pick(profile, 'email')),
-        address: text(pick(profile, ...contact, 'address') ?? pick(profile, 'address')),
+        given_name: text(pick(profile, ...name, 'given-name') ?? pick(profile, ...personal, 'given_name') ?? pick(profile, 'given_name')),
+        surname: text(pick(profile, ...name, 'surname') ?? pick(profile, ...personal, 'surname') ?? pick(profile, 'surname')),
+        email: text(pick(profile, ...contact, 'email') ?? pick(profile, ...personal, 'email') ?? pick(profile, 'email')),
+        address: readAddressObject(Array.isArray(mainAddress) ? legacyAddress('main') : mainAddress),
+        billing_address: readAddressObject(
+            pick(profile, ...contact, 'billing_address') ?? pick(profile, ...personal, 'billing_address') ?? pick(profile, 'billing_address') ?? legacyAddress('billing'),
+        ),
+        shipping_address: readAddressObject(
+            pick(profile, ...contact, 'shipping_address') ?? pick(profile, ...personal, 'shipping_address') ?? pick(profile, 'shipping_address') ?? legacyAddress('shipping'),
+        ),
         language: text(pick(profile, 'personal-information', 'language') ?? pick(profile, 'language')),
     };
 }

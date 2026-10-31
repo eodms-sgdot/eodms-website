@@ -10,8 +10,18 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const appTitle = env.VITE_APP_TITLE || translations.en.appTitle;
   const targetEnvironment = (env.EODMS_TARGET_ENV || (mode === "development" ? "staging" : "production")).toLowerCase();
-  if (!["staging", "production"].includes(targetEnvironment)) {
-    throw new Error("EODMS_TARGET_ENV must be either staging or production");
+  if (!["staging", "production", "proxy"].includes(targetEnvironment)) {
+    throw new Error("EODMS_TARGET_ENV must be staging, production, or proxy");
+  }
+  const proxyPort = env.EODMS_PROXY_PORT;
+  if (env.EODMS_AAA_TUNNEL_PORT) {
+    throw new Error("EODMS_AAA_TUNNEL_PORT is no longer supported. Use EODMS_TARGET_ENV=proxy and EODMS_PROXY_PORT to route all APIs together.");
+  }
+  if (targetEnvironment === "proxy" && (!proxyPort || !Number.isInteger(Number(proxyPort)) || Number(proxyPort) < 1 || Number(proxyPort) > 65535)) {
+    throw new Error("EODMS_TARGET_ENV=proxy requires EODMS_PROXY_PORT to be a valid TCP port");
+  }
+  if (targetEnvironment !== "proxy" && proxyPort) {
+    throw new Error("Set EODMS_TARGET_ENV=proxy when using EODMS_PROXY_PORT");
   }
   const stagingDomain = (env.EODMS_STAGING_DOMAIN || env.VITE_NAPL_STAGING_DOMAIN || "").replace(/\/+$/, "");
   const productionDomain = (env.EODMS_PRODUCTION_DOMAIN
@@ -19,16 +29,16 @@ export default defineConfig(({ mode }) => {
   if (mode === "development" && targetEnvironment === "staging" && !stagingDomain) {
     throw new Error("Set EODMS_STAGING_DOMAIN in site/.env.local for local staging proxies");
   }
-  const eodmsDomain = targetEnvironment === "production" ? productionDomain : stagingDomain;
-  const aaaTunnelPort = env.EODMS_AAA_TUNNEL_PORT;
+  const eodmsDomain = targetEnvironment === "proxy"
+    ? `http://127.0.0.1:${proxyPort}`
+    : targetEnvironment === "production" ? productionDomain : stagingDomain;
   const endpointMap = {
     localAaaProxy: "http://127.0.0.1:5000",
-    aaaUpstream: aaaTunnelPort
-      ? `http://127.0.0.1:${aaaTunnelPort}`
-      : eodmsDomain,
+    aaaUpstream: eodmsDomain,
     eodmsDomain: eodmsDomain || productionDomain,
     productionDomain,
     stagingDomain,
+    targetEnvironment,
   };
 
   return {

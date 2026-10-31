@@ -29,9 +29,10 @@ dev.cmd
 The launcher runs `npm run start` in `site\server` and `npm run dev` in `site`.
 To stop each process, close its terminal window or press `Ctrl+C` there.
 
-Vite proxies `/aaa` to the local AAA proxy and `/search` to the EODMS Search
-service. Production builds retain those relative paths; the production host is
-responsible for serving them.
+Vite proxies `/aaa` through the local API proxy and routes `/search`, `/dds`,
+and `/processing` to the selected target. In `proxy` mode, all four API families
+use the same `EODMS_PROXY_PORT`. Production builds retain the relative paths;
+the production host is responsible for serving them.
 
 For local development, copy `.env.example` to `.env.local`:
 
@@ -42,8 +43,10 @@ copy .env.example .env.local
 
 `EODMS_TARGET_ENV=staging` selects the upstream for local AAA, search, DDS, and
 processing requests. Change it to `production` to switch those routes to the
-production domain. `/napl` always targets staging. Restart Vite and the local
-AAA proxy after changing the setting. Local environment files are ignored by
+production domain. Set it to `proxy` with `EODMS_PROXY_PORT` to route all four
+through one local port-forwarded endpoint that serves the same API paths.
+`/napl` always targets staging. Restart Vite and the local API proxy after
+changing the setting. Local environment files are ignored by
 Git; update `.env.example` when adding configuration variables. Staging builds
 and deployments use the relative `/napl/v1` URL directly and do not need the
 local proxy or domain variables.
@@ -187,7 +190,7 @@ summary shows each line's choice. Older saved lines have no assumed map format.
 
 ## Production Build
 
-User profile viewing, editing, and password changes are disabled by default.
+User registration, profile viewing, editing, and password changes are disabled by default.
 Their implementation is preserved behind `VITE_ENABLE_USER_PROFILE=true`.
 Only enable it once the AAA users API is ready. This is a build-time setting:
 restart Vite for development, or rebuild and redeploy for production.
