@@ -100,9 +100,8 @@ export default function App() {
     const savedMode = localStorage.getItem(fields.displayMode) as DisplayMode;
     if (savedMode) return savedMode;
 
-    // Fallback to browser/system preference if no user choice is saved
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return prefersDark ? 'dark' : 'light';
+    // Default to light mode on new visits
+    return 'light';
   });
 
   const [bbox, setBbox] = useState<string | null>(null);
@@ -283,13 +282,20 @@ export default function App() {
    chosen a preferred setting in the past.
   */
   useEffect(() => {
+    // Only sync with system theme if user hasn't set a preference
+    if (localStorage.getItem(fields.displayMode)) {
+      return;
+    }
+    
+    // On initial mount with no saved preference, default to light mode.
+    // Don't check media query - user wants light mode as the default for new visits.
+    // The displayMode state was already initialized to 'light' in useState.
+    
+    // Still set up a listener for future system theme changes (respects user's system setting once set)
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
     const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-      // Only auto-switch if the user hasn't explicitly set a preference in localStorage
-      if (!localStorage.getItem(fields.displayMode)) {
-        setDisplayMode(e.matches ? 'dark' : 'light');
-      }
+      setDisplayMode(e.matches ? 'dark' : 'light');
     };
 
     mediaQuery.addEventListener('change', handleSystemThemeChange);
@@ -319,12 +325,13 @@ export default function App() {
       filters, setFilters, t,
       orders, isOrderingSupported, triggerNewOrder, expireOrder, refreshOrderStatus, clearOrderHistory
     }}>
-      <ThemeProvider theme={displayMode === "light" ? lightMode : darkMode}>
+      <ThemeProvider theme={displayMode === "light" ? lightMode : displayMode === "dark" ? darkMode : lightMode}>
         <CssBaseline />
         <HashRouter>
           <DocumentTitle language={language} />
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
+            <Route path="/tour" element={<Navigate to="/?tour=start" replace />} />
             <Route path="/napl" element={showStagingBadge || import.meta.env.DEV
               ? <LandingScreen experience={naplExperience} />
               : <Navigate to="/" replace />} />

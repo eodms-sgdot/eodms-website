@@ -188,7 +188,7 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
 
   return (
     <Blind open={open} onClose={onClose} align="right" width={580}>
-      <Box sx={{ px: 2, pb: 2, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 1.5 }}>
+      <Box sx={{ px: 2, pb: 2, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 1.5 }} data-tour="processing">
         <Typography variant="h6" color="primary">{t('processingTitle')}</Typography>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
         <Typography variant="subtitle1">{t('processingSubmission')}</Typography>

@@ -30,11 +30,20 @@ export default function GeoJsonAoiImportControl({ container, onImport }: GeoJson
     };
   }, [container]);
 
+  useEffect(() => {
+    // Ensure the button renders properly
+    const button = container.querySelector<HTMLElement>('.MuiIconButton-root');
+    if (button) {
+      // Let the button style naturally - don't force colors
+      button.style.setProperty('filter', 'none', 'important');
+    }
+  }, [container]);
+
   return createPortal(<>
     <Tooltip title={t('importGeoJsonAoiTooltip')} placement="right" slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line' } } }}>
       <span>
         <IconButton aria-label={t('importGeoJsonAoi')} disabled={loading} onClick={() => inputRef.current?.click()}
-          sx={{ width: 30, height: 30, borderRadius: 0, color: 'text.primary', bgcolor: 'background.paper', '&:hover': { bgcolor: theme.palette.action.hover } }}>
+          sx={{ width: 30, height: 30, borderRadius: 0, bgcolor: 'background.paper', '&:hover': { bgcolor: theme.palette.action.hover } }}>
           {loading ? <CircularProgress size={18} /> : <FileUploadOutlinedIcon fontSize="small" />}
         </IconButton>
       </span>

@@ -45,7 +45,7 @@ export default function PreferencesPanel({
   const availableLayers = getBaseMaps();
 
   return (
-    <Blind open={open} onClose={onClose} align="right" width={500}>
+    <Blind open={open} onClose={onClose} align="right" width={500} data-tour="preferences">
       <Box sx={{ px: 2, pb: 1 }}>
         <Typography variant="h6" color="primary" gutterBottom>
           {t("preferences")}

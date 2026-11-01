@@ -3,7 +3,8 @@ import { geojsonToWKT } from '@terraformer/wkt';
 
 export const MAX_AOI_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_AOI_POSITIONS = 500;
-const MAX_ENCODED_SPATIAL_FILTER_LENGTH = 6000;
+const MAX_ENCODED_SPATIAL_FILTER_LENGTH = 10000;
+const QGIS_CRS84_NAME = 'urn:ogc:def:crs:OGC:1.3:CRS84';
 
 export type AoiGeometry = GeoJSON.Geometry;
 export type AoiErrorKey = 'aoiInvalidGeoJson' | 'aoiUnsupportedGeometry' | 'aoiInvalidCoordinates' | 'aoiInvalidPolygon' | 'aoiTooComplex' | 'aoiSearchUrlTooLong' | 'aoiUnsupportedCrs' | 'aoiFileTooLarge';
@@ -41,6 +42,16 @@ export function parseGeoJsonAoi(text: string): AoiGeometry {
   } catch {
     throw new AoiImportError('aoiInvalidGeoJson');
   }
+  const validateCrs = (value: unknown) => {
+    if (value === undefined) return;
+    if (!value || typeof value !== 'object') throw new AoiImportError('aoiUnsupportedCrs');
+    const crs = value as Record<string, unknown>;
+    const properties = crs.properties;
+    if (crs.type !== 'name' || !properties || typeof properties !== 'object'
+      || (properties as Record<string, unknown>).name !== QGIS_CRS84_NAME) {
+      throw new AoiImportError('aoiUnsupportedCrs');
+    }
+  };
   let positions = 0;
   const readPosition = (position: unknown): GeoJSON.Position => {
     if (++positions > MAX_AOI_POSITIONS) throw new AoiImportError('aoiTooComplex');
@@ -98,7 +109,7 @@ export function parseGeoJsonAoi(text: string): AoiGeometry {
     if (depth > 16) throw new AoiImportError('aoiTooComplex');
     if (!value || typeof value !== 'object') throw new AoiImportError('aoiInvalidGeoJson');
     const object = value as Record<string, unknown>;
-    if (object.crs !== undefined) throw new AoiImportError('aoiUnsupportedCrs');
+    validateCrs(object.crs);
     switch (object.type) {
       case 'Point': return { type: 'Point', coordinates: readPosition(object.coordinates) };
       case 'MultiPoint': return { type: 'MultiPoint', coordinates: readArray(object.coordinates).map(readPosition) };
@@ -116,13 +127,13 @@ export function parseGeoJsonAoi(text: string): AoiGeometry {
   const readFeature = (value: unknown): AoiGeometry => {
     if (!value || typeof value !== 'object' || (value as Record<string, unknown>).type !== 'Feature') throw new AoiImportError('aoiInvalidGeoJson');
     const feature = value as Record<string, unknown>;
-    if (feature.crs !== undefined) throw new AoiImportError('aoiUnsupportedCrs');
+    validateCrs(feature.crs);
     if (feature.geometry === null) throw new AoiImportError('aoiUnsupportedGeometry');
     return readGeometry(feature.geometry);
   };
   if (!input || typeof input !== 'object') throw new AoiImportError('aoiInvalidGeoJson');
   const object = input as Record<string, unknown>;
-  if (object.crs !== undefined) throw new AoiImportError('aoiUnsupportedCrs');
+  validateCrs(object.crs);
   const geometry = object.type === 'FeatureCollection' ? combine(readArray(object.features).map(readFeature))
     : object.type === 'Feature' ? readFeature(object) : readGeometry(object);
   buildAoiSpatialFilter(geometry);

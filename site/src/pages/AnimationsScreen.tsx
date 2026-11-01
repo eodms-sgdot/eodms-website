@@ -45,7 +45,25 @@ function LoaderSet({ title, loaders }: { title: string; loaders: SearchLoader[] 
 }
 
 /** Preview of the search loaders for each experience. */
-export default function AnimationsScreen() {
+export default function AnimationsScreen({ isEmbedded = false }: { isEmbedded?: boolean }) {
+  if (isEmbedded) {
+    // Show only the EODMS loader in a compact form for the tour
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          width: '100%',
+        }}
+      >
+        <LoaderCycle loaders={SEARCH_LOADERS} />
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 4, minHeight: '100vh' }}>
       <Typography variant="h5">Search animations</Typography>

@@ -31,6 +31,9 @@ test('rejects malformed, empty, unsupported, projected, open, or crossing input'
   rejects({ type: 'FeatureCollection', features: [] }, 'aoiInvalidGeoJson');
   rejects({ type: 'Circle', coordinates: [-75, 45] }, 'aoiUnsupportedGeometry');
   rejects({ type: 'Feature', geometry: null }, 'aoiUnsupportedGeometry');
+  assert.deepEqual(parseGeoJsonAoi(JSON.stringify({ ...geometry, crs: {
+    type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' },
+  } })), geometry);
   rejects({ ...geometry, crs: { type: 'name', properties: { name: 'EPSG:3857' } } }, 'aoiUnsupportedCrs');
   rejects({ ...geometry, coordinates: [[[500000, 4500000], [0, 0], [1, 1], [500000, 4500000]]] }, 'aoiInvalidCoordinates');
   rejects({ ...geometry, coordinates: [[[-76, 45], [-75, 45], [-75, 46], [-76, 46]]] }, 'aoiInvalidPolygon');

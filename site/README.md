@@ -116,16 +116,17 @@ Files are limited to 2 MiB and 500 input positions in total across all features,
 including polygon holes and repeated ring-closing coordinates. Nested geometry
 collections are limited to 16 levels. The 500-position cap is a conservative
 starting point for main-thread topology checks and Leaflet editing, not a
-guarantee of a particular device's performance. A separate 6,000-character limit
+guarantee of a particular device's performance. A separate 10,000-character limit
 on the URL-encoded spatial filter applies because searches currently use GET URLs;
 high-precision coordinates or many separate parts can reach it before 500 positions.
 Detailed
 geometries must be simplified before import; there is no silent simplification.
-Malformed JSON, unsupported geometry, explicit CRS declarations, invalid
+Malformed JSON, unsupported geometry, unsupported CRS declarations, invalid
 coordinates, open or self-intersecting rings, and invalid holes are rejected
-without replacing the active AOI. Export older or projected datasets as RFC 7946
-GeoJSON first. Empty/null geometries, KML, shapefiles, GeoPackage, and reprojection
-are not included. The mixed example is available at
+without replacing the active AOI. The legacy QGIS OGC:CRS84 declaration is
+accepted; projected datasets must be reprojected to WGS84 longitude/latitude.
+Empty/null geometries, KML, shapefiles, GeoPackage, and reprojection are not
+included. The mixed example is available at
 `public/examples/ottawa-all-geometries.geojson`.
 
 Run `node --test tests/GeoJsonAoi.test.ts` for import-validation regression tests.

@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useRef } from 'react';
+import { useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -7,12 +7,17 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import RouteIcon from '@mui/icons-material/Route';
+import GuidanceIcon from '@mui/icons-material/Travelexplore';
+import { useSearchParams } from 'react-router-dom';
 import { AppContext } from '../AppContext';
 import StacMap from '../components/StacMap';
 import SearchPanel from '../components/SearchPanel';
 import ResultsPanel from '../components/ResultsPanel';
 import AuthPanel from '../components/AuthPanel';
 import TermsOfUseDialog from '../components/TermsOfUseDialog';
+import InteractiveTour, { type TourStep } from '../components/InteractiveTour';
+import { useTour } from '../hooks/useTour';
+import { EODMS_TOUR_STEPS, NAPL_TOUR_STEPS } from '../config/tourSteps.config';
 import type { STACCollection, STACItem } from '../types';
 import { createDateRange } from '../utils/DateUtils';
 import { customDateRange, DateSearchError } from '../utils/PartialDates';
@@ -76,7 +81,11 @@ interface LandingScreenProps {
 }
 
 export default function LandingScreen({ experience }: LandingScreenProps) {
-const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate,
+  const { isActive: tourActive, startTour, endTour } = useTour();
+  const tourSteps = experience.id === 'napl' ? NAPL_TOUR_STEPS : EODMS_TOUR_STEPS;
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate,
     username, authToken, getValidAuthToken, isAuthOpen, setIsAuthOpen,
     displayMode, bbox, setBbox, filters, language, setLanguage, t } = useContext(AppContext)!;
   
@@ -99,6 +108,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       ? [{ id: fixedCollectionId, description: '', links: [] }]
       : [],
   );
+  const [allCollections, setAllCollections] = useState<STACCollection[]>([]);
   const [zoomBounds, setZoomBounds] = useState<[number, number, number, number] | null>(null);
 
   const [isSearching, setIsSearching] = useState(false);
@@ -165,6 +175,34 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const calcResultsDrawerWidth = (): number | string => isMobile
     ? '100%'
     : Math.min(resultsWidth, getMaxResultsWidth());
+
+  // Clear all browser data (localStorage and cookies) for tour experience
+  const clearBrowserData = () => {
+    // Clear localStorage
+    localStorage.clear();
+    
+    // Clear cookies
+    document.cookie.split(";").forEach((c) => {
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+    });
+  };
+
+  const handleStartTour = () => {
+    clearBrowserData();
+    startTour(0);
+  };
+
+  // Auto-start tour if coming from cleared data or visiting #/tour
+  useEffect(() => {
+    if (searchParams.get('tour') === 'start') {
+      searchParams.delete('tour');
+      setSearchParams(searchParams);
+      startTour(0);
+    }
+  }, [searchParams, setSearchParams, startTour]);
+
   const firstName = username?.trim().split(/\s+/)[0];
   const endpointMap = import.meta.env.VITE_EODMS_ENDPOINTS;
   const directStacEndpoint = /^https?:\/\//i.test(stacEndpoint);
@@ -473,11 +511,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
    * Constructs the payload, applies temporal/spatial/queryables filters, and updates the search results state.
    * * @async
    * @param {[number, number, number, number]} searchBbox - Optional bounding box [West, South, East, North].
+   * @param {STACCollection[]} overrideCollections - Optional collections to use instead of selectedCollections (for tour)
+   * @param {string} overrideTemporal - Optional temporal option to use instead of searchTemporal (for tour)
    */
-  const prepareSearch = async (searchBbox?: [number, number, number, number], searchGeometry?: AoiGeometry) => {
+  const prepareSearch = async (searchBbox?: [number, number, number, number], searchGeometry?: AoiGeometry, overrideCollections?: STACCollection[], overrideTemporal?: string) => {
+    const collectionsToUse = overrideCollections || selectedCollections;
     const collectionIDs = fixedCollectionId
       ? [fixedCollectionId]
-      : selectedCollections.map(collection => collection.id);
+      : collectionsToUse.map(collection => collection.id);
 
     if (collectionIDs.length === 0) {
       return null;
@@ -487,17 +528,18 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       ...(!searchGeometry && searchBbox && { bbox: searchBbox }),
       collections: collectionIDs,
       limit: searchLimit,
-      ...(selectedCollections.length <= 1 && {sortby}),
+      ...(collectionsToUse.length <= 1 && {sortby}),
     };
 
-      if (searchTemporal === 'custom') {
+      const temporalToUse = overrideTemporal || searchTemporal;
+      if (temporalToUse === 'custom') {
         params.datetime = customDateRange(searchStartDate, searchEndDate);
-      } else if (searchTemporal !== 'anytime') {
-        params.datetime = createDateRange(searchTemporal).join('/');
+      } else if (temporalToUse !== 'anytime') {
+        params.datetime = createDateRange(temporalToUse).join('/');
       }
       const queryablesToken = authToken ? await getValidAuthToken() : null;
       const queryablesByCollection = await Promise.all(collectionIDs.map(async collectionId => {
-        let collection = selectedCollections.find(selected => selected.id === collectionId);
+        let collection = collectionsToUse.find(selected => selected.id === collectionId);
         let queryablesUrl = collection?.links.find(link =>
           link.rel.includes('queryables') && link.type.includes('json'),
         )?.href;
@@ -535,10 +577,10 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
       return { params, geometryValidityCollectionIds };
   };
 
-  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true, searchGeometry?: AoiGeometry) => {
+  const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true, searchGeometry?: AoiGeometry, overrideCollections?: STACCollection[], overrideTemporal?: string) => {
     let prepared;
     try {
-      prepared = await prepareSearch(searchBbox, searchGeometry);
+      prepared = await prepareSearch(searchBbox, searchGeometry, overrideCollections, overrideTemporal);
     } catch (error) {
       setSearchError(error instanceof DateSearchError || error instanceof AoiImportError ? t(error.translationKey) : t('errorFetch'));
       return;
@@ -591,6 +633,34 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
   const searchWithCurrentAoi = () => {
     void handleSearch(getCurrentSearchBbox(), true, aoiGeometry ?? undefined);
   };
+
+  // Tour demo search: select specified collection and search with specified time range
+  const searchForTourDemo = useCallback(async (collectionId: string, temporalOption: string) => {
+    try {
+      // Try to find collection in all available collections
+      let targetCollection = allCollections.find(c => c.id === collectionId);
+      
+      if (!targetCollection) {
+        console.warn(`Tour demo search: Collection "${collectionId}" not found. Available: ${allCollections.map(c => c.id).join(', ')}`);
+        return;
+      }
+
+      console.log(`Tour: Searching for ${collectionId} with temporal option ${temporalOption}`);
+      
+      // Set the selected collections to highlight the checkmark
+      setSelectedCollections([targetCollection]);
+      
+      // Set time range to the specified option
+      setSearchTemporal(temporalOption);
+      
+      // Use a small delay to let state updates settle, then trigger search
+      setTimeout(() => {
+        void handleSearch(getCurrentSearchBbox(), true, aoiGeometry ?? undefined, [targetCollection], temporalOption);
+      }, 50);
+    } catch (error) {
+      console.error('Tour demo search failed:', error);
+    }
+  }, [allCollections, aoiGeometry]);
 
   const getCurrentSearchUrl = async () => {
     let prepared;
@@ -731,6 +801,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               <IconButton
                 onClick={() => { setOpenBlind(null); setIsAuthOpen(!isAuthOpen); }}
                 sx={barButtonSx(isAuthOpen)}
+                data-tour="login-button"
               >
                 {authToken ? (
                   <Avatar sx={{ width: 24, height: 24, fontSize: 11, fontWeight: 700, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
@@ -742,7 +813,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
             {username && experience.id === 'eodms' && (
               <Tooltip title={t('viewOrderHistory')}>
-                <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)}>
+                <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)} data-tour="orders-button">
                   <Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}>
                     <ShoppingBagIcon fontSize="small" />
                   </Badge>
@@ -752,7 +823,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
 
             {username && experience.id === 'eodms' && (
               <Tooltip title={`${t('processingJobs')} (${processingJobs?.length ?? 0})`}>
-                <IconButton aria-label={`${t('processingJobs')} (${processingJobs?.length ?? 0})`} onClick={() => toggleBlind('processing')} sx={barButtonSx(isProcessingOpen)}>
+                <IconButton aria-label={`${t('processingJobs')} (${processingJobs?.length ?? 0})`} onClick={() => toggleBlind('processing')} sx={barButtonSx(isProcessingOpen)} data-tour="processing-button">
                   <Badge badgeContent={processingJobs?.length ?? 0} color="secondary" max={99}>
                     <ScienceIcon fontSize="small" />
                   </Badge>
@@ -761,8 +832,14 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
             )}
 
             <Tooltip title={t('preferences')}>
-              <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)}>
+              <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)} data-tour="preferences-button">
                 <SettingsIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Take a tour">
+              <IconButton onClick={handleStartTour} sx={barButtonSx(tourActive)}>
+                <GuidanceIcon fontSize="small" />
               </IconButton>
             </Tooltip>
 
@@ -836,6 +913,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
               stacEndpoint={stacEndpoint} fixedCollectionId={fixedCollectionId}
               showNaplCollectionToggle={experience.id === 'napl'} onFixedCollectionChange={handleFixedCollectionChange}
               selectedCollections={selectedCollections} setSelectedCollections={setSelectedCollections}
+              onCollectionsLoaded={setAllCollections}
               searchLimit={searchLimit} setSearchLimit={setSearchLimit} searchTemporal={searchTemporal} setSearchTemporal={setSearchTemporal}
               startDate={searchStartDate} setStartDate={setSearchStartDate} endDate={searchEndDate} setEndDate={setSearchEndDate} 
               supportsSearch={supportsSearch} supportsSorting={supportsSorting} sortby={sortby} setSortby={setSortby} executeSearch={searchWithCurrentAoi} getSearchUrl={getCurrentSearchUrl}
@@ -889,6 +967,7 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
                 color="primary"
                 onClick={() => showLeftPanel(true)}
                 sx={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', zIndex: 1001, textTransform: 'none' }}
+                data-tour="search-button"
               >
                 <SearchIcon sx={{ mr: 1 }} />
                 {t('search')}
@@ -1007,6 +1086,17 @@ const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemp
         onManualClose={() => setManualTermsOpen(false)}
       />
     </Box>
+    <InteractiveTour
+      steps={tourSteps}
+      isActive={tourActive}
+      onComplete={endTour}
+      onStepChange={useCallback((step: TourStep) => {
+        if (step.id === 'search-button' && experience.id === 'eodms' && step.collectionId && step.temporalOption) {
+          // Auto-search when reaching search-button step
+          void searchForTourDemo(step.collectionId, step.temporalOption);
+        }
+      }, [experience.id, searchForTourDemo])}
+    />
     </BlindContainerContext.Provider>
   );
 }

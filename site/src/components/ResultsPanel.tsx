@@ -1151,7 +1151,7 @@ export default function ResultsPanel({
   };
 
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }} data-tour="results-panel">
       <Box
         sx={{
           p: 2,
@@ -1194,6 +1194,7 @@ export default function ResultsPanel({
               "& .MuiToggleButton-root": { color: "white", borderColor: alpha("#fff", 0.5), py: 0.25 },
               "& .Mui-selected": { bgcolor: `${alpha("#fff", 0.25)} !important` },
             }}
+            data-tour="view-toggle"
           >
             <ToggleButton value="cards" aria-label={t("cardView")}>
               <Tooltip title={t("cardView")}><ViewAgendaIcon fontSize="small" /></Tooltip>
@@ -1217,7 +1218,7 @@ export default function ResultsPanel({
         </Box>
       )}
       {cartItems.length > 0 && (
-        <Box sx={{ px: 2, py: 0.5, display: "flex", alignItems: "center", gap: 1, bgcolor: alpha(brandColor, 0.08), borderBottom: 1, borderColor: "divider" }}>
+        <Box sx={{ px: 2, py: 0.5, display: "flex", alignItems: "center", gap: 1, bgcolor: alpha(brandColor, 0.08), borderBottom: 1, borderColor: "divider" }} data-tour="cart">
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
             <Tooltip title={`${t("cart")} (${cartItems.length})`}>
               <Badge badgeContent={cartItems.length} color="secondary" max={99} role="img" aria-label={`${t("cart")} (${cartItems.length})`}

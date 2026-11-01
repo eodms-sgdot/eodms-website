@@ -32,6 +32,8 @@ export interface SearchPanelProps {
   selectedCollections: STACCollection[];
   /** State setter for updating the selected collections */
   setSelectedCollections: React.Dispatch<React.SetStateAction<STACCollection[]>>;
+  /** Callback when all available collections are loaded */
+  onCollectionsLoaded?: (collections: STACCollection[]) => void;
   /** The maximum number of records to return from the STAC search */
   searchLimit: number;
   /** State setter for the search limit */
@@ -122,7 +124,7 @@ const getCollectionTimelineSegments = (collection: STACCollection, scale: Collec
  * @returns {JSX.Element} The rendered Search Panel drawer content.
  */
 export default function SearchPanel({ 
-  stacEndpoint, fixedCollectionId, showNaplCollectionToggle, onFixedCollectionChange, selectedCollections, setSelectedCollections,
+  stacEndpoint, fixedCollectionId, showNaplCollectionToggle, onFixedCollectionChange, selectedCollections, setSelectedCollections, onCollectionsLoaded,
   searchTemporal, setSearchTemporal, startDate, setStartDate, endDate, setEndDate, supportsSearch,
   supportsSorting, sortby, setSortby, executeSearch, getSearchUrl
 }: SearchPanelProps) {
@@ -196,16 +198,26 @@ export default function SearchPanel({
             ? { id: fixedCollectionId, description: '', links: [] }
             : await getCollection(stacEndpoint, fixedCollectionId, collectionAuthToken);
           if (cancelled) return;
-          setCollections(keepIfSame([collection]));
+          const collectionsArray = [collection];
+          setCollections(keepIfSame(collectionsArray));
+          onCollectionsLoaded?.(collectionsArray);
           if (!silent) setSelectedCollections([collection]);
         } else {
           const collections = await getCollections(stacEndpoint, collectionAuthToken);
           if (cancelled) return;
           setCollections(keepIfSame(collections));
-          setSelectedCollections(previous => previous.flatMap(selected => {
-            const current = collections.find(collection => collection.id === selected.id);
-            return current ? [current] : [];
-          }));
+          onCollectionsLoaded?.(collections);
+          setSelectedCollections(previous => {
+            const updated = previous.flatMap(selected => {
+              const current = collections.find(collection => collection.id === selected.id);
+              return current ? [current] : [];
+            });
+            // Auto-select first collection if none is selected
+            if (updated.length === 0 && collections.length > 0) {
+              return [collections[0]];
+            }
+            return updated;
+          });
         }
       } catch (error: unknown) {
         if (cancelled) return;
@@ -307,7 +319,7 @@ export default function SearchPanel({
   });
 
   return (
-    <Box sx={{display: "flex", flexDirection: "column", height: "100%" }}>
+    <Box sx={{display: "flex", flexDirection: "column", height: "100%" }} data-tour="collections">
       {fixedCollectionId ? <NaplWelcome /> : <Box
         sx={{
           p: 2,
@@ -492,6 +504,7 @@ export default function SearchPanel({
         startIcon={<SearchIcon />}
         onClick={executeSearch}
         sx={{ flexGrow: 1 }}
+        data-tour="search-button"
       >
         {t("search")}
       </Button>
@@ -525,15 +538,17 @@ export default function SearchPanel({
       </Snackbar>
 
       <Box sx={{ mt: "auto", display: "flex", flexDirection: "column", gap: 2, p:2 }}>
-        <DatePicker
-          searchTemporal={searchTemporal}
-          setSearchTemporal={setSearchTemporal}
-          startDate={startDate}
-          setStartDate={setStartDate}
-          endDate={endDate}
-          setEndDate={setEndDate}
-          onChange={() => {}}
-        />
+        <Box data-tour="time-picker">
+          <DatePicker
+            searchTemporal={searchTemporal}
+            setSearchTemporal={setSearchTemporal}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            onChange={() => {}}
+          />
+        </Box>
 
         {supportsSorting && (
           <FormControl fullWidth size="small" disabled={selectedCollections.length > 1}>

@@ -131,7 +131,7 @@ export default function AuthPanel({ footerStart }: { footerStart?: ReactNode }) 
   };
 
   return (
-    <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+    <Box sx={{ px: 2, pt: 2, pb: 1 }} data-tour="login">
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
         <Avatar sx={{ bgcolor: 'action.selected', color: 'primary.main' }}>
           <LockOutlinedIcon />

@@ -420,7 +420,7 @@ export default function OrderPanel({
 
   return (
     <Blind open={open} onClose={onClose} align="right" width={600} disableEnforceFocus>
-      <Box sx={{ px: 1, pb: 1 }}>
+      <Box sx={{ px: 1, pb: 1 }} data-tour="orders">
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6" color="primary" gutterBottom>{t('orderHistory')}</Typography>
           <Box

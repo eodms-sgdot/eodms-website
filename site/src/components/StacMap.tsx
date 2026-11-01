@@ -329,12 +329,13 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
       coordinateButton.title = coordinateEntryLabel;
       coordinateButton.setAttribute('role', 'button');
       coordinateButton.setAttribute('aria-label', coordinateEntryLabel);
-      coordinateButton.textContent = 'XY';
+      coordinateButton.textContent = '';
       coordinateButton.style.backgroundImage = 'none';
-      coordinateButton.style.color = '#333';
+      coordinateButton.style.color = '#fff';
       coordinateButton.style.fontSize = '10px';
       coordinateButton.style.fontWeight = 'bold';
       coordinateButton.style.lineHeight = '26px';
+      coordinateButton.style.position = 'relative';
       L.DomEvent.disableClickPropagation(coordinateButton);
       L.DomEvent.on(coordinateButton, 'click', (event) => {
         L.DomEvent.preventDefault(event);
@@ -652,21 +653,70 @@ const FootprintStyles = () => {
       borderRadius: 4,
       backgroundColor: theme.palette.background.paper,
       backgroundClip: 'padding-box',
+      display: 'flex',
+      flexDirection: 'column',
+      width: 'fit-content',
     },
     '.stac-aoi-control .leaflet-draw-toolbar': {
       border: 0,
       borderRadius: 0,
       boxShadow: 'none',
       marginTop: 0,
+      display: 'flex !important',
+      flexDirection: 'column',
     },
     '.stac-aoi-control .leaflet-draw-toolbar > a': {
       width: 30,
       height: 30,
       lineHeight: '30px',
       borderRadius: 0,
-      borderBottom: `1px solid ${theme.palette.divider}`,
+      borderRight: `1px solid ${theme.palette.divider}`,
       backgroundColor: theme.palette.background.paper,
       color: theme.palette.text.primary,
+      backgroundImage: 'none !important',
+      position: 'relative',
+    },
+    '.stac-aoi-control .leaflet-draw-toolbar > a::after': {
+      content: '""',
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '16px',
+      height: '16px',
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
+    },
+    '.stac-aoi-control .leaflet-draw-draw-rectangle::after': {
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='${theme.palette.mode === 'dark' ? 'white' : '%23555'}'%3E%3Crect x='3' y='5' width='18' height='14' stroke='${theme.palette.mode === 'dark' ? 'white' : '%23555'}' stroke-width='1.5' fill='none'/%3E%3C/svg%3E")`,
+    },
+    '.stac-aoi-control .leaflet-draw-edit-edit::after': {
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='${theme.palette.mode === 'dark' ? 'white' : '%23555'}'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z'/%3E%3Cpath d='M20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E")`,
+    },
+    '.stac-aoi-control .leaflet-draw-edit-remove::after': {
+      content: '""',
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '16px',
+      height: '16px',
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='${theme.palette.mode === 'dark' ? 'white' : '%23555'}'%3E%3Cpath d='M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z'/%3E%3C/svg%3E")`,
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
+      zIndex: 2,
+    },
+    '.leaflet-draw-coordinate-entry::after': {
+      content: '""',
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '16px',
+      height: '16px',
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C7.58 2 4 5.58 4 10c0 5.25 8 13 8 13s8-7.75 8-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z' fill='${theme.palette.mode === 'dark' ? 'white' : '%23555'}'/%3E%3C/svg%3E")`,
+      backgroundSize: 'contain',
+      backgroundRepeat: 'no-repeat',
     },
     '.stac-aoi-control .leaflet-draw-toolbar > a:hover, .stac-aoi-control .leaflet-draw-actions a:hover': {
       backgroundColor: theme.palette.action.hover,
@@ -679,10 +729,11 @@ const FootprintStyles = () => {
     '.stac-aoi-control .stac-aoi-import-slot': {
       width: 30,
       height: 30,
-      borderBottom: `1px solid ${theme.palette.divider}`,
+      borderRight: `1px solid ${theme.palette.divider}`,
+      backgroundColor: theme.palette.background.paper,
     },
     '.stac-aoi-control .leaflet-draw-edit-remove': {
-      borderBottom: 0,
+      borderRight: 0,
     },
     '.leaflet-draw-toolbar .leaflet-draw-edit-remove': {
       position: 'relative',
@@ -821,6 +872,7 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
       zoomAnimation={false}
       crs={baseMapLayer?.type === "wmts" ? ARCTIC_CRS : L.CRS.EPSG3857}
       style={{ height: '100%', width: '100%' }}
+      data-tour="map"
     >
       <ArcticViewConstraints />
       { baseMapLayer ? (
