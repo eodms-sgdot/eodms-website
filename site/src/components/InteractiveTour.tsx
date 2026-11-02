@@ -244,7 +244,18 @@ export default function InteractiveTour({
                 component="img"
                 src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/ICAN3.jpg`}
                 alt="A ground-station antenna operating in a snowy landscape at dusk"
-                sx={{ display: 'block', width: '100%', height: '100%' }}
+                onLoad={(event) => { event.currentTarget.style.animationPlayState = 'running'; }}
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  height: '100%',
+                  animation: 'tourImageFade 400ms ease-out both paused',
+                  '@keyframes tourImageFade': {
+                    from: { opacity: 0 },
+                    to: { opacity: 1 },
+                  },
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+                }}
               />
               {[{ left: '64.86%', top: '25.63%' }, { left: '64.78%', top: '26.65%' }].map((beacon) => (
                 <Box
