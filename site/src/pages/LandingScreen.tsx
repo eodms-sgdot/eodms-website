@@ -7,7 +7,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import RouteIcon from '@mui/icons-material/Route';
-import GuidanceIcon from '@mui/icons-material/Travelexplore';
+import GuidanceIcon from '@mui/icons-material/TravelExplore';
 import { useSearchParams } from 'react-router-dom';
 import { AppContext } from '../AppContext';
 import StacMap from '../components/StacMap';
