@@ -12,7 +12,7 @@ export function getInitials(name: string | null | undefined): string {
  * @param breakpoint the max width to be considered 'mobile'; default is 768
  * @returns whether the device is a mobile phone
  */
-export function useIsMobile(breakpoint = 768) {
+export function useIsMobile(breakpoint = 1024) {
   const query = `(max-width: ${breakpoint}px), (pointer: coarse) and (hover: none)`;
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(query).matches);
 

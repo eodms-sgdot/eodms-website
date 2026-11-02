@@ -60,7 +60,7 @@ const MIN_MAP_WIDTH = 320;
 const PANEL_RESIZE_BREAKPOINT = DRAWER_WIDTH + MIN_RESULTS_WIDTH + MIN_MAP_WIDTH;
 const SORT_OPTIONS = new Set(['', '-datetime', '+datetime']);
 // Matches useIsMobile's default so the first render agrees with it.
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 
 const barButtonSx = (active: boolean) => ({
   width: 34,
