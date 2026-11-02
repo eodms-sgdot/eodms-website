@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "concurrently -k -n proxy,web \"npm --prefix server run start\" \"npm run dev -- --host 127.0.0.1 --port 5173 --strictPort\"",
     "build": "tsc -b && vite build",
     "build:ccmeo": "tsc -b && vite build --base=/site",
     "prod": "tsc --noEmit --skipLibCheck && vite build",
@@ -47,6 +48,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/terraformer__wkt": "^2.0.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^10.0.6",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

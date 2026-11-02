@@ -742,7 +742,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
           <IconButton edge="start" onClick={() => showLeftPanel(!leftOpen)}><MenuIcon /></IconButton>
           <Box
             component="a"
-            href={`https://www.canada.ca/${language}.html`}
+            href={language === 'en' ? 'https://natural-resources.canada.ca/' : 'https://ressources-naturelles.canada.ca/'}
             target="_blank"
             rel="noopener noreferrer"
             sx={{ display: 'flex', alignItems: 'center', ml: 1, mr: 1.5, flexShrink: 0,

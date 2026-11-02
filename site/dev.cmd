@@ -6,5 +6,6 @@ if not exist "%~dp0.env.local" (
 	exit /b 1
 )
 
-start "EODMS AAA proxy" cmd /k "cd /d ""%~dp0server"" && npm run start"
-start "EODMS frontend - http://localhost:5173" cmd /k "cd /d ""%~dp0"" && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort"
+cd /d "%~dp0"
+call npm run dev:all
+exit /b %errorlevel%
