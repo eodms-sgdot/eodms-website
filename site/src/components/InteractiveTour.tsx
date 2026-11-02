@@ -242,7 +242,7 @@ export default function InteractiveTour({
             >
               <Box
                 component="img"
-                src={`${import.meta.env.BASE_URL}ICAN3.jpg`}
+                src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/ICAN3.jpg`}
                 alt="A ground-station antenna operating in a snowy landscape at dusk"
                 sx={{ display: 'block', width: '100%', height: '100%' }}
               />
