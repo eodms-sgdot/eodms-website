@@ -10,6 +10,7 @@ import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import RouteIcon from '@mui/icons-material/Route';
 import GuidanceIcon from '@mui/icons-material/TravelExplore';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatOutlined';
 import { useSearchParams } from 'react-router-dom';
 import { AppContext } from '../AppContext';
 import StacMap from '../components/StacMap';
@@ -94,6 +95,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
   const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(
     `(max-width: ${MOBILE_BREAKPOINT}px), (pointer: coarse) and (hover: none)`,
   ).matches);
@@ -868,6 +870,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
             )}
 
             {!isMobile && <FeedbackControl isMobile={false} />}
+            {isMobile && <FeedbackControl isMobile={false} hideTrigger open={feedbackOpen} onOpenChange={setFeedbackOpen} />}
 
             <PreferencesPanel 
               open={isPreferencesOpen} 
@@ -934,7 +937,10 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
               <ListItemIcon><GuidanceIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Take a tour</ListItemText>
             </MenuItem>
-            <FeedbackControl isMobile={false} inOverflowMenu onSelect={() => setOverflowAnchor(null)} />
+            <MenuItem onClick={() => { setOverflowAnchor(null); setFeedbackOpen(true); }}>
+              <ListItemIcon><ChatBubbleOutlineIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{t('feedback')}</ListItemText>
+            </MenuItem>
             <MenuItem onClick={() => { setOverflowAnchor(null); setLanguage(language === 'en' ? 'fr' : 'en'); }}>
               <ListItemIcon><LanguageIcon fontSize="small" /></ListItemIcon>
               <ListItemText>{language === 'en' ? 'Français' : 'English'}</ListItemText>

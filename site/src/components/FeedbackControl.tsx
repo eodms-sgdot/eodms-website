@@ -1,9 +1,8 @@
 import { useContext, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip, Typography } from '@mui/material';
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
 import BugReportOutlinedIcon from '@mui/icons-material/BugReportOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -11,35 +10,21 @@ import { AppContext } from '../AppContext';
 
 const SUPPORT_EMAIL = 'eodms-sgdot@nrcan-rncan.gc.ca';
 
-export default function FeedbackControl({ isMobile, inOverflowMenu = false, onSelect }: { isMobile: boolean; inOverflowMenu?: boolean; onSelect?: () => void }) {
+export default function FeedbackControl({ isMobile, hideTrigger = false, open, onOpenChange }: { isMobile: boolean; hideTrigger?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { t } = useContext(AppContext)!;
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const [copyStatus, setCopyStatus] = useState<'success' | 'error' | null>(null);
 
   const showFeedback = () => {
     setMenuAnchor(null);
-    setCopyStatus(null);
     setOpen(true);
-  };
-
-  const copyEmail = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL);
-      setCopyStatus('success');
-    } catch {
-      setCopyStatus('error');
-    }
   };
 
   return (
     <>
-      {inOverflowMenu ? (
-        <MenuItem onClick={() => { onSelect?.(); showFeedback(); }}>
-          <ListItemIcon><ChatBubbleOutlineIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{t('feedback')}</ListItemText>
-        </MenuItem>
-      ) : (
+      {!hideTrigger && (
         <>
           <Tooltip title={t(isMobile ? 'feedbackMoreOptions' : 'feedback')}>
             <IconButton
@@ -61,35 +46,25 @@ export default function FeedbackControl({ isMobile, inOverflowMenu = false, onSe
           </Menu>
         </>
       )}
-      <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby="feedback-title" fullWidth maxWidth="xs">
+      <Dialog open={isOpen} onClose={() => setOpen(false)} aria-labelledby="feedback-title" fullWidth maxWidth="xs">
         <DialogTitle id="feedback-title">{t('feedback')}</DialogTitle>
         <DialogContent dividers>
           <List disablePadding>
             <ListItemButton component="a" href={`mailto:${SUPPORT_EMAIL}`}>
               <ListItemIcon><EmailOutlinedIcon /></ListItemIcon>
-              <ListItemText primary={t('feedbackEmail')} secondary={t('feedbackEmailDetail')} />
+              <ListItemText primary={t('feedbackEmail')} />
             </ListItemButton>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 2, pr: 1, pb: 1 }}>
-              <Typography variant="body2" sx={{ overflowWrap: 'anywhere', minWidth: 0 }}>{SUPPORT_EMAIL}</Typography>
-              <Tooltip title={t('feedbackCopyEmail')}>
-                <IconButton aria-label={t('feedbackCopyEmail')} size="small" onClick={() => void copyEmail()}>
-                  <ContentCopyIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
             <ListItemButton component="a" href="https://github.com/orgs/eodms-sgdot/discussions/20" target="_blank" rel="noopener noreferrer">
               <ListItemIcon><ForumOutlinedIcon /></ListItemIcon>
-              <ListItemText primary={t('feedbackDiscussion')} secondary={t('feedbackPublic')} />
+              <ListItemText primary={t('feedbackDiscussion')} />
               <OpenInNewIcon fontSize="small" sx={{ ml: 1, flexShrink: 0 }} aria-hidden="true" />
             </ListItemButton>
             <ListItemButton component="a" href="https://github.com/eodms-sgdot/eodms-website/issues/new/choose" target="_blank" rel="noopener noreferrer">
               <ListItemIcon><BugReportOutlinedIcon /></ListItemIcon>
-              <ListItemText primary={t('feedbackBug')} secondary={t('feedbackPublic')} />
+              <ListItemText primary={t('feedbackBug')} />
               <OpenInNewIcon fontSize="small" sx={{ ml: 1, flexShrink: 0 }} aria-hidden="true" />
             </ListItemButton>
           </List>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{t('feedbackPrivacy')}</Typography>
-          {copyStatus && <Alert severity={copyStatus} sx={{ mt: 2 }}>{t(copyStatus === 'success' ? 'feedbackEmailCopied' : 'feedbackEmailCopyFailed')}</Alert>}
         </DialogContent>
         <DialogActions><Button onClick={() => setOpen(false)}>{t('close')}</Button></DialogActions>
       </Dialog>

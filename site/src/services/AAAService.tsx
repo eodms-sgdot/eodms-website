@@ -186,6 +186,8 @@ export function handleAAAError(error:AxiosError): string | null {
             return 'errorBadRequest';
         } else if(error.response.status == 401) {
             return 'errorUserPass';
+        } else if(error.response.status == 403) {
+            return 'errorLoginForbidden';
         } else if(error.response.status == 429) {
             return 'errorTooManyRequests';
         } else if(error.response.status == 500) {
