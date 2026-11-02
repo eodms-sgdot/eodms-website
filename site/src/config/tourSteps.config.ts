@@ -3,9 +3,33 @@ import type { TourStep } from '../components/InteractiveTour';
 export const EODMS_TOUR_STEPS: TourStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to EODMS',
-    description: 'Discover Canada\'s Earth Observation capabilities with our new and improved interface. This guided tour will show you all the key features.',
+    title: 'Always On. Ready for What\'s Next.',
+    description: 'Like synthetic aperture radar (SAR), Canada\'s ground segment keeps Earth observation moving day or night, in all weather. EODMS brings that same always-on mission to a streamlined experience built for today.',
+    presentation: 'sar-welcome',
     placement: 'bottom',
+  },
+  {
+    id: 'modernization',
+    title: 'A Modern EODMS',
+    description: 'Guided by the Government of Canada Digital Standards, we\'re modernizing access through OGC APIs, aligning with the GC Cloud Strategy, and expanding access to CEOS-standardized analysis-ready data.',
+    resources: [
+      {
+        label: 'Government of Canada Digital Standards',
+        href: 'https://www.canada.ca/en/government/system/digital-government/government-canada-digital-standards.html',
+      },
+      {
+        label: 'OGC APIs',
+        href: 'https://ogcapi.ogc.org/',
+      },
+      {
+        label: 'GC Cloud Strategy',
+        href: 'https://www.canada.ca/en/government/system/digital-government/digital-government-innovations/cloud-services/cloud-adoption-strategy-2023-update.html',
+      },
+      {
+        label: 'CEOS Analysis Ready Data',
+        href: 'https://ceos.org/ard/',
+      },
+    ],
   },
   {
     id: 'collections',

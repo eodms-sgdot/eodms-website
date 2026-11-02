@@ -7,6 +7,8 @@ import {
   IconButton,
   Stack,
   Fade,
+  Dialog,
+  Link,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -16,12 +18,14 @@ export interface TourStep {
   id: string;
   title: string;
   description: string;
+  resources?: { label: string; href: string }[];
   target?: string; // CSS selector for element to highlight
   placement?: 'top' | 'bottom' | 'left' | 'right';
   highlightPadding?: number;
   action?: () => void | Promise<void>; // Optional callback when step is entered
   collectionId?: string; // Optional collection to select for this step
   temporalOption?: string; // Optional temporal range option (e.g., '1' for last 24 hours)
+  presentation?: 'sar-welcome';
 }
 
 interface InteractiveTourProps {
@@ -202,6 +206,101 @@ export default function InteractiveTour({
     onComplete?.();
   };
 
+  if (step.presentation === 'sar-welcome') {
+    return (
+      <Dialog
+        open={isActive}
+        onClose={handleClose}
+        maxWidth={false}
+        aria-labelledby="sar-welcome-title"
+        aria-describedby="sar-welcome-description"
+        slotProps={{
+          paper: {
+            sx: {
+              m: { xs: 1.5, sm: 3 },
+              width: 'min(1200px, 94vw)',
+              height: 'min(900px, 90dvh)',
+              maxHeight: 'calc(100dvh - 24px)',
+              borderRadius: 2,
+              bgcolor: '#101719',
+              color: '#fff',
+              overflow: 'auto',
+            },
+          },
+        }}
+      >
+        <Box sx={{ position: 'relative', flex: 1, minHeight: 420, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ position: 'absolute', inset: 0, overflow: 'hidden', containerType: 'size' }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                width: 'max(100cqw, calc(100cqh * 4 / 3))',
+                height: 'max(100cqh, calc(100cqw * 3 / 4))',
+                left: 'calc((100cqw - max(100cqw, calc(100cqh * 4 / 3))) * 0.65)',
+                top: 'calc((100cqh - max(100cqh, calc(100cqw * 3 / 4))) * 0.14)',
+              }}
+            >
+              <Box
+                component="img"
+                src={`${import.meta.env.BASE_URL}ICAN3.jpg`}
+                alt="A ground-station antenna operating in a snowy landscape at dusk"
+                sx={{ display: 'block', width: '100%', height: '100%' }}
+              />
+              {[{ left: '64.86%', top: '25.63%' }, { left: '64.78%', top: '26.65%' }].map((beacon) => (
+                <Box
+                  key={beacon.left}
+                  data-tour-beacon
+                  aria-hidden="true"
+                  sx={{
+                    position: 'absolute',
+                    ...beacon,
+                    width: '0.25%',
+                    aspectRatio: '1',
+                    borderRadius: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    background: '#ff3027',
+                    boxShadow: '0 0 8px 4px #ff3027, 0 0 24px 10px rgba(255, 35, 25, 0.65)',
+                    animation: 'antennaBeacon 2.4s ease-in-out infinite',
+                    '@keyframes antennaBeacon': {
+                      '0%, 15%, 45%, 100%': { opacity: 0 },
+                      '24%, 32%': { opacity: 1 },
+                    },
+                    '@media (prefers-reduced-motion: reduce)': { animation: 'none', opacity: 0.7 },
+                  }}
+                />
+              ))}
+            </Box>
+          </Box>
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, transparent 30%, rgba(0,0,0,0.82) 75%, rgba(0,0,0,0.94) 100%)',
+            }}
+          />
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: { xs: 2, sm: 3 } }}>
+            <Typography variant="overline" sx={{ letterSpacing: 0 }}>EODMS / {currentStep + 1} of {steps.length}</Typography>
+            <Button onClick={handleClose} startIcon={<CloseIcon />} sx={{ color: '#fff', flexShrink: 0 }}>
+              Quit
+            </Button>
+          </Box>
+          <Box sx={{ position: 'relative', mt: 'auto', p: { xs: 3, sm: 5 }, maxWidth: 720 }}>
+            <Typography variant="overline" sx={{ color: '#9ee8d7', letterSpacing: 0 }}>Earth observation. Always on.</Typography>
+            <Typography id="sar-welcome-title" component="h1" sx={{ fontSize: { xs: '2rem', sm: '3rem' }, fontWeight: 700, lineHeight: 1.12, letterSpacing: 0, mt: 1, mb: 2 }}>
+              {step.title}
+            </Typography>
+            <Typography id="sar-welcome-description" sx={{ fontSize: { xs: '1rem', sm: '1.125rem' }, lineHeight: 1.6, color: '#edf2f2', mb: 3 }}>
+              {step.description}
+            </Typography>
+            <Button variant="contained" onClick={handleNext} endIcon={<ChevronRightIcon />} size="large" sx={{ bgcolor: '#a3eedc', color: '#102d27', '&:hover': { bgcolor: '#c4f6ea' } }}>
+              Next
+            </Button>
+          </Box>
+        </Box>
+      </Dialog>
+    );
+  }
+
   return (
     <Fade in={isActive}>
       <Box
@@ -263,6 +362,18 @@ export default function InteractiveTour({
             <Typography variant="body2" color="textSecondary">
               {step.description}
             </Typography>
+
+            {step.resources && (
+              <Stack component="ul" spacing={1} sx={{ m: 0, pl: 2, overflowWrap: 'anywhere' }}>
+                {step.resources.map((resource) => (
+                  <Box component="li" key={resource.href}>
+                    <Link href={resource.href} target="_blank" rel="noopener noreferrer" variant="body2">
+                      {resource.label}
+                    </Link>
+                  </Box>
+                ))}
+              </Stack>
+            )}
 
             {/* Navigation buttons */}
             <Stack direction="row" spacing={1} sx={{ pt: 1 }}>
