@@ -99,10 +99,15 @@ function FootprintDensityController({ items, onDensityChange }: {
   onDensityChange: (isDense: boolean) => void;
 }) {
   const map = useMap();
+  const initialDensityChecked = useRef(false);
 
   useEffect(() => {
-    let previousDensity: boolean | null = null;
-    const updateDensity = () => {
+    if (items.length === 0 || initialDensityChecked.current) return;
+
+    let fallbackTimer: number;
+    const checkInitialDensity = () => {
+      if (initialDensityChecked.current) return;
+
       const mapBounds = map.getPixelBounds();
       const visibleFootprints = items.reduce((count, item) => {
         if (!item.geometry) return count;
@@ -112,16 +117,16 @@ function FootprintDensityController({ items, onDensityChange }: {
         });
         return footprintBounds.isValid() && mapBounds.intersects(footprintBounds) ? count + 1 : count;
       }, 0);
-      const isDense = visibleFootprints >= DENSE_FOOTPRINT_THRESHOLD;
-      if (isDense !== previousDensity) {
-        previousDensity = isDense;
-        onDensityChange(isDense);
-      }
+      initialDensityChecked.current = true;
+      if (visibleFootprints >= DENSE_FOOTPRINT_THRESHOLD) onDensityChange(true);
     };
 
-    updateDensity();
-    map.on('moveend', updateDensity);
-    return () => { map.off('moveend', updateDensity); };
+    map.once('moveend', checkInitialDensity);
+    fallbackTimer = window.setTimeout(checkInitialDensity, 500);
+    return () => {
+      map.off('moveend', checkInitialDensity);
+      window.clearTimeout(fallbackTimer);
+    };
   }, [items, map, onDensityChange]);
 
   return null;
@@ -808,8 +813,9 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
   const resultLayerControlRef = useRef<HTMLDivElement>(null);
   const { language, locationSearchProvider, baseMapLayer, t } = useContext(AppContext)!; 
   const [resultLayer, setResultLayer] = useState<ResultLayer>('footprints');
+  const userSelectedResultLayer = useRef(false);
   const handleDensityChange = useCallback((isDense: boolean) => {
-    if (isDense) setResultLayer('points');
+    if (isDense && !userSelectedResultLayer.current) setResultLayer('points');
   }, []);
   const [coordinateDialogOpen, setCoordinateDialogOpen] = useState(false);
   const [coordinateValues, setCoordinateValues] = useState(['', '']);
@@ -903,6 +909,7 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
           value={resultLayer}
           onChange={(_, next: ResultLayer | null) => {
             if (next) {
+              userSelectedResultLayer.current = true;
               setResultLayer(next);
               onZoomToResults();
             }
