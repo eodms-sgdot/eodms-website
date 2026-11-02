@@ -727,7 +727,14 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
 
   return (
     <BlindContainerContext.Provider value={contentEl}>
-    <Box sx={{ display: 'flex', height: '100vh', width: '100%', flexDirection: 'column', overflow: 'hidden' }}>
+    <Box sx={{
+      display: 'flex',
+      height: '100vh',
+      '@supports (height: 100dvh)': { height: '100dvh' },
+      width: '100%',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }}>
       <AppBar position="static" color="default" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1}}>
         <Toolbar variant="dense">
           <IconButton edge="start" onClick={() => showLeftPanel(!leftOpen)}><MenuIcon /></IconButton>
