@@ -1,7 +1,9 @@
 import { useState, useContext, useEffect, useRef, useCallback } from 'react';
-import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip } from '@mui/material';
+import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import LanguageIcon from '@mui/icons-material/Language';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlined';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar';
@@ -91,7 +93,10 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   
   const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches);
+  const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
+  const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia(
+    `(max-width: ${MOBILE_BREAKPOINT}px), (pointer: coarse) and (hover: none)`,
+  ).matches);
   const [rightOpen, setRightOpen] = useState(false);
   const [resultsWidth, setResultsWidth] = useState(MIN_RESULTS_WIDTH);
   const [isResizingResults, setIsResizingResults] = useState(false);
@@ -736,7 +741,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
           >
             <Box
               component="img"
-              src="https://www.eodms-sgdot.nrcan-rncan.gc.ca/GCWeb/assets/sig-spl.svg"
+              src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/NRCan.svg`}
               alt={t('governmentOfCanada')}
               sx={{
                 height: 22,
@@ -750,11 +755,25 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
             />
           </Box>
           <Divider orientation="vertical" flexItem variant="middle" sx={{ mr: 1.5 }} />
-          <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 0 }}>
-            <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
-          </Typography>
           <Box sx={{
             display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? 0.5 : 1,
+            minWidth: 0,
+            flexShrink: 1,
+          }}>
+            <Typography variant="h6" color="primary" noWrap sx={{ flexShrink: 1, minWidth: 0 }}>
+              <TitleCharm title={t(experience.titleKey)} accent={experience.titleAccentKey && t(experience.titleAccentKey)} />
+            </Typography>
+            <Chip
+              label="BETA"
+              size="small"
+              color="secondary"
+              sx={{ height: isMobile ? 18 : 26, fontSize: isMobile ? 9 : undefined, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
+            />
+          </Box>
+          <Box sx={{
+            display: isMobile ? 'none' : 'flex',
             alignItems: 'center',
             flexWrap: 'wrap',
             gap: { xs: 0.75, sm: 1.25 },
@@ -763,12 +782,6 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
             minWidth: 0,
             maxWidth: { xs: 150, sm: 'min(38vw, 420px)' },
           }}>
-            <Chip
-              label="BETA"
-              size="small"
-              color="secondary"
-              sx={{ height: 26, fontWeight: 700, flexShrink: 0, borderRadius: '999px', boxShadow: 1 }}
-            />
             {showStagingBadge && (
               <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
                 <Chip
@@ -811,7 +824,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
               </IconButton>
             </Tooltip>
 
-            {username && experience.id === 'eodms' && (
+            {!isMobile && username && experience.id === 'eodms' && (
               <Tooltip title={t('viewOrderHistory')}>
                 <IconButton onClick={() => toggleBlind('orders')} sx={barButtonSx(isOrdersOpen)} data-tour="orders-button">
                   <Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}>
@@ -821,7 +834,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
               </Tooltip>
             )}
 
-            {username && experience.id === 'eodms' && (
+            {!isMobile && username && experience.id === 'eodms' && (
               <Tooltip title={`${t('processingJobs')} (${processingJobs?.length ?? 0})`}>
                 <IconButton aria-label={`${t('processingJobs')} (${processingJobs?.length ?? 0})`} onClick={() => toggleBlind('processing')} sx={barButtonSx(isProcessingOpen)} data-tour="processing-button">
                   <Badge badgeContent={processingJobs?.length ?? 0} color="secondary" max={99}>
@@ -831,19 +844,23 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
               </Tooltip>
             )}
 
-            <Tooltip title={t('preferences')}>
-              <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)} data-tour="preferences-button">
-                <SettingsIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {!isMobile && (
+              <Tooltip title={t('preferences')}>
+                <IconButton onClick={() => toggleBlind('preferences')} sx={barButtonSx(isPreferencesOpen)} data-tour="preferences-button">
+                  <SettingsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
 
-            <Tooltip title="Take a tour">
-              <IconButton onClick={handleStartTour} sx={barButtonSx(tourActive)}>
-                <GuidanceIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {!isMobile && (
+              <Tooltip title="Take a tour">
+                <IconButton onClick={handleStartTour} sx={barButtonSx(tourActive)}>
+                  <GuidanceIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
 
-            <FeedbackControl isMobile={isMobile} />
+            {!isMobile && <FeedbackControl isMobile={false} />}
 
             <PreferencesPanel 
               open={isPreferencesOpen} 
@@ -857,12 +874,72 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
             </Tooltip>
           </Box>
 
+          {isMobile && (
+            <IconButton
+              aria-label={language === 'en' ? 'More options' : 'Plus d’options'}
+              aria-controls={overflowAnchor ? 'mobile-overflow-menu' : undefined}
+              aria-haspopup="menu"
+              aria-expanded={Boolean(overflowAnchor)}
+              onClick={(event) => setOverflowAnchor(event.currentTarget)}
+              sx={{ ml: 0.25, flexShrink: 0 }}
+            >
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+          )}
+
+          <Menu
+            id="mobile-overflow-menu"
+            anchorEl={overflowAnchor}
+            open={Boolean(overflowAnchor)}
+            onClose={() => setOverflowAnchor(null)}
+          >
+            {(showStagingBadge || import.meta.env.DEV) && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, px: 2, py: 1, maxWidth: 280 }}>
+                {showStagingBadge && (
+                  <Tooltip title={stagingEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 440 } } }}>
+                    <Chip icon={<ScienceIcon fontSize="small" />} label="STAGING" size="small" color="warning" />
+                  </Tooltip>
+                )}
+                {import.meta.env.DEV && (
+                  <Tooltip title={proxyEndpointTooltip} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', maxWidth: 520 } } }}>
+                    <Chip icon={<RouteIcon fontSize="small" />} label="PROXY" size="small" color="info" />
+                  </Tooltip>
+                )}
+              </Box>
+            )}
+            {username && experience.id === 'eodms' && (
+              <MenuItem onClick={() => { setOverflowAnchor(null); toggleBlind('orders'); }}>
+                <ListItemIcon><Badge badgeContent={getLocalOrdersCount()} color="warning" max={99}><ShoppingBagIcon fontSize="small" /></Badge></ListItemIcon>
+                <ListItemText>{t('viewOrderHistory')}</ListItemText>
+              </MenuItem>
+            )}
+            {username && experience.id === 'eodms' && (
+              <MenuItem onClick={() => { setOverflowAnchor(null); toggleBlind('processing'); }}>
+                <ListItemIcon><Badge badgeContent={processingJobs?.length ?? 0} color="secondary" max={99}><ScienceIcon fontSize="small" /></Badge></ListItemIcon>
+                <ListItemText>{t('processingJobs')}</ListItemText>
+              </MenuItem>
+            )}
+            <MenuItem onClick={() => { setOverflowAnchor(null); toggleBlind('preferences'); }}>
+              <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{t('preferences')}</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { setOverflowAnchor(null); handleStartTour(); }}>
+              <ListItemIcon><GuidanceIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>Take a tour</ListItemText>
+            </MenuItem>
+            <FeedbackControl isMobile={false} inOverflowMenu onSelect={() => setOverflowAnchor(null)} />
+            <MenuItem onClick={() => { setOverflowAnchor(null); setLanguage(language === 'en' ? 'fr' : 'en'); }}>
+              <ListItemIcon><LanguageIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{language === 'en' ? 'Français' : 'English'}</ListItemText>
+            </MenuItem>
+          </Menu>
+
           <Button
             size="small"
             lang={language === 'en' ? 'fr' : 'en'}
             aria-label={language === 'en' ? 'Français' : 'English'}
             onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
-            sx={{ ml: 1.5, minWidth: 0, textTransform: 'none', textDecoration: 'underline', fontWeight: 400 }}
+            sx={{ ml: 1.5, minWidth: 0, textTransform: 'none', textDecoration: 'underline', fontWeight: 400, display: isMobile ? 'none' : undefined }}
           >
             {isMobile ? (language === 'en' ? 'FR' : 'EN') : (language === 'en' ? 'Français' : 'English')}
           </Button>

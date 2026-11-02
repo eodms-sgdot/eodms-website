@@ -7,18 +7,17 @@ export function getInitials(name: string | null | undefined): string {
 }
 
 /**
- * Determines whether the device viewing the SPA is a mobile phone
- * It's based on whether the width of the screen is larger than the breakpoint
- *  * 
+ * Determines whether the SPA should use its compact mobile layout.
+ * Touch-first browsers can report a desktop-sized viewport when requesting desktop sites.
  * @param breakpoint the max width to be considered 'mobile'; default is 768
  * @returns whether the device is a mobile phone
  */
 export function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia(`(max-width: ${breakpoint}px)`).matches);
+  const query = `(max-width: ${breakpoint}px), (pointer: coarse) and (hover: none)`;
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(query).matches);
 
   useEffect(() => {
-    // Define the media query
-    const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const mediaQuery = window.matchMedia(query);
 
     // Define listener callback
     const handleResize = (e: { matches: boolean | ((prevState: boolean) => boolean); }) => setIsMobile(e.matches);
@@ -28,7 +27,7 @@ export function useIsMobile(breakpoint = 768) {
     
     // Clean up listener on unmount
     return () => mediaQuery.removeEventListener("change", handleResize);
-  }, [breakpoint]);
+  }, [query]);
 
   return isMobile;
 }

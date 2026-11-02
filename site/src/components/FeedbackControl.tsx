@@ -11,7 +11,7 @@ import { AppContext } from '../AppContext';
 
 const SUPPORT_EMAIL = 'eodms-sgdot@nrcan-rncan.gc.ca';
 
-export default function FeedbackControl({ isMobile }: { isMobile: boolean }) {
+export default function FeedbackControl({ isMobile, inOverflowMenu = false, onSelect }: { isMobile: boolean; inOverflowMenu?: boolean; onSelect?: () => void }) {
   const { t } = useContext(AppContext)!;
   const [open, setOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -34,24 +34,33 @@ export default function FeedbackControl({ isMobile }: { isMobile: boolean }) {
 
   return (
     <>
-      <Tooltip title={t(isMobile ? 'feedbackMoreOptions' : 'feedback')}>
-        <IconButton
-          aria-label={t(isMobile ? 'feedbackMoreOptions' : 'feedback')}
-          aria-haspopup={isMobile ? 'menu' : 'dialog'}
-          aria-expanded={isMobile ? Boolean(menuAnchor) : undefined}
-          aria-controls={isMobile && menuAnchor ? 'feedback-menu' : undefined}
-          onClick={isMobile ? (event) => setMenuAnchor(event.currentTarget) : showFeedback}
-          sx={{ width: 34, height: 34, borderRadius: 1.5, color: 'text.secondary' }}
-        >
-          {isMobile ? <MoreVertIcon fontSize="small" /> : <ChatBubbleOutlineIcon fontSize="small" />}
-        </IconButton>
-      </Tooltip>
-      <Menu id="feedback-menu" anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
-        <MenuItem onClick={showFeedback}>
+      {inOverflowMenu ? (
+        <MenuItem onClick={() => { onSelect?.(); showFeedback(); }}>
           <ListItemIcon><ChatBubbleOutlineIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{t('feedback')}</ListItemText>
         </MenuItem>
-      </Menu>
+      ) : (
+        <>
+          <Tooltip title={t(isMobile ? 'feedbackMoreOptions' : 'feedback')}>
+            <IconButton
+              aria-label={t(isMobile ? 'feedbackMoreOptions' : 'feedback')}
+              aria-haspopup={isMobile ? 'menu' : 'dialog'}
+              aria-expanded={isMobile ? Boolean(menuAnchor) : undefined}
+              aria-controls={isMobile && menuAnchor ? 'feedback-menu' : undefined}
+              onClick={isMobile ? (event) => setMenuAnchor(event.currentTarget) : showFeedback}
+              sx={{ width: 34, height: 34, borderRadius: 1.5, color: 'text.secondary' }}
+            >
+              {isMobile ? <MoreVertIcon fontSize="small" /> : <ChatBubbleOutlineIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+          <Menu id="feedback-menu" anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+            <MenuItem onClick={showFeedback}>
+              <ListItemIcon><ChatBubbleOutlineIcon fontSize="small" /></ListItemIcon>
+              <ListItemText>{t('feedback')}</ListItemText>
+            </MenuItem>
+          </Menu>
+        </>
+      )}
       <Dialog open={open} onClose={() => setOpen(false)} aria-labelledby="feedback-title" fullWidth maxWidth="xs">
         <DialogTitle id="feedback-title">{t('feedback')}</DialogTitle>
         <DialogContent dividers>
