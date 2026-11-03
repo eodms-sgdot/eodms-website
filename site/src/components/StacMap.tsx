@@ -15,6 +15,7 @@ import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 import 'leaflet-geosearch/assets/css/leaflet.css';
 import type { STACItem } from '../types'; 
 import { getLatLonCoordsFromGeometry } from '../utils/GeometryUtils';
+import { splitAntimeridianGeometry } from '../utils/Antimeridian';
 import RotatedImageOverlay from 'react-leaflet-rotated-imageoverlay';
 import type { SearchResult } from 'leaflet-geosearch/dist/providers/provider.js';
 import { GeolocatorProvider } from './providers/GeolocatorProvider';
@@ -166,25 +167,31 @@ function fitMapBounds(map: L.Map, bounds: L.LatLngBounds) {
 
   // Polar parallels curve, so opposite geographic corners do not bound their projected extent.
   const projectedBounds = L.bounds([]);
+  const south = Math.max(-89.999999, bounds.getSouth());
+  const north = Math.min(89.999999, bounds.getNorth());
   for (let step = 0; step <= 64; step++) {
     const fraction = step / 64;
     const longitude = bounds.getWest() + (bounds.getEast() - bounds.getWest()) * fraction;
-    const latitude = bounds.getSouth() + (bounds.getNorth() - bounds.getSouth()) * fraction;
+    const latitude = south + (north - south) * fraction;
     for (const position of [
-      L.latLng(bounds.getSouth(), longitude),
-      L.latLng(bounds.getNorth(), longitude),
+      L.latLng(south, longitude),
+      L.latLng(north, longitude),
       L.latLng(latitude, bounds.getWest()),
       L.latLng(latitude, bounds.getEast())
     ]) {
-      projectedBounds.extend(map.project(position, 0));
+      const projected = map.project(position, 0);
+      if (Number.isFinite(projected.x) && Number.isFinite(projected.y)) projectedBounds.extend(projected);
     }
   }
 
   const size = projectedBounds.getSize();
+  if (!projectedBounds.isValid() || !Number.isFinite(size.x) || !Number.isFinite(size.y) || size.x <= 0 || size.y <= 0) return;
   const available = map.getSize().subtract([100, 100]);
   const scale = Math.min(Math.max(1, available.x) / size.x, Math.max(1, available.y) / size.y);
   const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), ARCTIC_CRS.zoom(scale * ARCTIC_CRS.scale(0))));
-  map.setView(map.unproject(projectedBounds.getCenter(), 0), zoom, { animate: false });
+  const center = bounds.getCenter();
+  center.lat = Math.max(-89.999999, Math.min(89.999999, center.lat));
+  map.setView(center, zoom, { animate: false });
 }
 
 function ArcticViewConstraints() {
@@ -821,6 +828,9 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
   const [coordinateValues, setCoordinateValues] = useState(['', '']);
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
+  const displaySearchResults = useMemo(() => searchResults.map(item => item.geometry
+    ? { ...item, geometry: splitAntimeridianGeometry(item.geometry) }
+    : item), [searchResults]);
   const coordinateLabels = [t('longitude'), t('latitude')];
   useEffect(() => {
     if (resultLayerControlRef.current) {
@@ -952,7 +962,7 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
         </DialogActions>
       </Dialog>
 
-      {resultLayer === 'footprints' && searchResults.map((item, index) => {
+      {resultLayer === 'footprints' && displaySearchResults.map((item, index) => {
         const isSelected = selectedFootprints.has(item.id);
         const isHovered = item.id === hoveredItem;
         const color = isSelected ? highlightColor : brandColor;
