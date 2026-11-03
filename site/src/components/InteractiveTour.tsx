@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useContext, useEffect, useState, useRef } from 'react';
 import {
   Box,
   Button,
@@ -13,6 +13,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { AppContext } from '../AppContext';
 
 export interface TourStep {
   id: string;
@@ -168,6 +169,7 @@ export default function InteractiveTour({
   startStep = 0,
   onStepChange,
 }: InteractiveTourProps) {
+  const { t } = useContext(AppContext)!;
   const [currentStep, setCurrentStep] = useState(startStep);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
@@ -419,7 +421,7 @@ export default function InteractiveTour({
             <Box
               component="img"
               src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/NRCan.svg`}
-              alt="Natural Resources Canada"
+              alt={t('tourNrcanAlt')}
               sx={{
                 height: { xs: 14, sm: 18 },
                 width: 'auto',
@@ -428,14 +430,14 @@ export default function InteractiveTour({
               }}
             />
             <Button onClick={handleClose} startIcon={<CloseIcon />} sx={{ color: '#fff', flexShrink: 0 }}>
-              Quit
+              {t('tourExitTour')}
             </Button>
           </Box>
           <Box sx={{ position: 'absolute', bottom: { xs: 12, sm: 18 }, right: { xs: 12, sm: 18 }, fontSize: '0.75rem', color: '#9ee8d7', letterSpacing: 0.5 }}>
-            EODMS / {currentStep + 1} of {steps.length}
+            EODMS / {currentStep + 1} {t('tourOf')} {steps.length}
           </Box>
           <Box sx={{ position: 'relative', mt: 'auto', p: { xs: 3, sm: 5 }, maxWidth: 720 }}>
-            <Typography variant="overline" sx={{ color: '#9ee8d7', letterSpacing: 0 }}>Canada&apos;s Earth Observation Hub. Always On.</Typography>
+            <Typography variant="overline" sx={{ color: '#9ee8d7', letterSpacing: 0 }}>{t('tourEodmsSubtitle')}</Typography>
             <Typography id="sar-welcome-title" component="h1" sx={{ fontSize: { xs: '2rem', sm: '3rem' }, fontWeight: 700, lineHeight: 1.12, letterSpacing: 0, mt: 1, mb: 2 }}>
               {step.title}
             </Typography>
@@ -443,7 +445,7 @@ export default function InteractiveTour({
               {step.description}
             </Typography>
             <Button variant="contained" onClick={handleNext} endIcon={<ChevronRightIcon />} size="large" sx={{ bgcolor: '#a3eedc', color: '#102d27', '&:hover': { bgcolor: '#c4f6ea' } }}>
-              Next
+              {t('tourNext')}
             </Button>
           </Box>
         </Box>
@@ -488,7 +490,7 @@ export default function InteractiveTour({
               <Box
                 component="img"
                 src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/rcm-river.jpg`}
-                alt="Historical aerial photograph of Canadian landscape"
+                alt={t('tourNaplImageAlt')}
                 onLoad={(event) => { event.currentTarget.style.animationPlayState = 'running'; }}
                 sx={{
                   display: 'block',
@@ -515,7 +517,7 @@ export default function InteractiveTour({
             <Box
               component="img"
               src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/NRCan.svg`}
-              alt="Natural Resources Canada"
+              alt={t('tourNrcanAlt')}
               sx={{
                 height: { xs: 14, sm: 18 },
                 width: 'auto',
@@ -524,14 +526,14 @@ export default function InteractiveTour({
               }}
             />
             <Button onClick={handleClose} startIcon={<CloseIcon />} sx={{ color: '#fff', flexShrink: 0 }}>
-              Quit
+              {t('tourExitTour')}
             </Button>
           </Box>
           <Box sx={{ position: 'absolute', bottom: { xs: 12, sm: 18 }, right: { xs: 12, sm: 18 }, fontSize: '0.75rem', color: '#9ee8d7', letterSpacing: 0.5 }}>
-            NAPL / {currentStep + 1} of {steps.length}
+            NAPL / {currentStep + 1} {t('tourOf')} {steps.length}
           </Box>
           <Box sx={{ position: 'relative', mt: 'auto', p: { xs: 3, sm: 5 }, maxWidth: 720 }}>
-            <Typography variant="overline" sx={{ color: '#9ee8d7', letterSpacing: 0 }}>Canada&apos;s National Air Photo Library.</Typography>
+            <Typography variant="overline" sx={{ color: '#9ee8d7', letterSpacing: 0 }}>{t('tourNaplSubtitle')}</Typography>
             <Typography id="napl-welcome-title" component="h1" sx={{ fontSize: { xs: '2rem', sm: '3rem' }, fontWeight: 700, lineHeight: 1.12, letterSpacing: 0, mt: 1, mb: 2 }}>
               {step.title}
             </Typography>
@@ -539,7 +541,7 @@ export default function InteractiveTour({
               {step.description}
             </Typography>
             <Button variant="contained" onClick={handleNext} endIcon={<ChevronRightIcon />} size="large" sx={{ bgcolor: '#a3eedc', color: '#102d27', '&:hover': { bgcolor: '#c4f6ea' } }}>
-              Next
+              {t('tourNext')}
             </Button>
           </Box>
         </Box>
@@ -660,7 +662,7 @@ export default function InteractiveTour({
                 disabled={currentStep === 0}
                 variant="outlined"
               >
-                Back
+                {t('tourBack')}
               </Button>
               <Box sx={{ flex: 1 }} />
               <Button
@@ -669,7 +671,7 @@ export default function InteractiveTour({
                 onClick={handleNext}
                 variant="contained"
               >
-                {currentStep === steps.length - 1 ? 'Done' : 'Next'}
+                {currentStep === steps.length - 1 ? t('tourDone') : t('tourNext')}
               </Button>
             </Stack>
 

@@ -1,10 +1,11 @@
 import type { TourStep } from '../components/InteractiveTour';
+import type { Language } from '../i18n';
 
 export const EODMS_TOUR_STEPS: TourStep[] = [
   {
     id: 'welcome',
     title: 'Canada\'s EO. Always On.',
-    description: 'Building on Canada\'s legacy in synthetic aperture radar, we keep Earth observation moving day or night, in all weather. Always available, always ready—streamlined access to Canada\'s observation data built for today.',
+    description: 'Like our flagship RADARSAT synthetic aperture radar program, NRCan\'s mission is to keep Earth observation moving day or night, in all weather. Always on. Discover Canadian EO in the new EODMS; Re-built to serve today\'s EO community.',
     presentation: 'sar-welcome',
   },
   {
@@ -112,3 +113,80 @@ export const NAPL_TOUR_STEPS: TourStep[] = [
     placement: 'top',
   },
 ];
+
+type TourStepTranslation = Pick<TourStep, 'title' | 'description'> & Pick<TourStep, 'resources'>;
+
+const FRENCH_TOUR_STEPS: Record<'eodms' | 'napl', Record<string, TourStepTranslation>> = {
+  eodms: {
+    welcome: {
+      title: 'L’observation de la Terre au Canada. Toujours en action.',
+      description: 'À l’image de notre programme phare de radar à synthèse d’ouverture RADARSAT, la mission de RNCan est de faire progresser l’observation de la Terre jour et nuit, par tous les temps. Toujours en service. Découvrez l’observation de la Terre canadienne dans le nouvel EODMS, reconstruit pour répondre aux besoins de la communauté d’aujourd’hui.',
+    },
+    modernization: {
+      title: 'Un EODMS moderne',
+      description: 'Guidés par les Normes numériques du gouvernement du Canada, nous modernisons l’accès grâce aux API de l’OGC, conformément à la Stratégie d’adoption de l’informatique en nuage du GC, et élargissons l’accès aux données prêtes à l’analyse normalisées par le CEOS.',
+      resources: [
+        { label: 'Normes numériques du gouvernement du Canada', href: 'https://www.canada.ca/en/government/system/digital-government/government-canada-digital-standards.html' },
+        { label: 'API de l’OGC', href: 'https://ogcapi.ogc.org/' },
+        { label: 'Stratégie d’adoption de l’informatique en nuage du GC', href: 'https://www.canada.ca/en/government/system/digital-government/digital-government-innovations/cloud-services/cloud-adoption-strategy-2023-update.html' },
+        { label: 'Données prêtes à l’analyse du CEOS', href: 'https://ceos.org/ard/' },
+      ],
+    },
+    collections: {
+      title: 'Collections, filtres et dates',
+      description: 'Sélectionnez une ou plusieurs collections de données satellitaires et choisissez une période de recherche. La barre temporelle indique la couverture des collections selon différentes périodes. Utilisez les filtres pour préciser votre recherche et saisissez les dates manuellement. Toutes les heures sont en UTC (temps universel coordonné).',
+    },
+    'map-controls': {
+      title: 'Contrôles cartographiques et zone d’intérêt',
+      description: 'Définissez votre zone d’intérêt. Cliquez avec le bouton droit pour dessiner un rectangle, importer un fichier GeoJSON ou saisir des coordonnées. Plusieurs méthodes de recherche sont offertes.',
+    },
+    'search-button': {
+      title: 'Lancer votre recherche',
+      description: 'Cliquez sur le bouton Rechercher pour trouver des images satellites correspondant à vos critères. Les résultats s’afficheront dans le panneau de droite.',
+    },
+    'results-view': {
+      title: 'Résultats et téléchargement',
+      description: 'Affichez les résultats sous forme de miniatures ou de tableau. Passez des empreintes aux marqueurs ponctuels. Sélectionnez plusieurs résultats et commandez-les en un clic. La connexion est requise pour la plupart des données.',
+    },
+    'orders-panel': {
+      title: 'Téléchargements, préférences et profil',
+      description: 'Accédez aux téléchargements et aux préférences avec les boutons en haut à droite. Suivez vos commandes en temps réel et consultez leur progression. Personnalisez votre expérience : changez la carte de base, choisissez la langue, activez le mode sombre ou sélectionnez votre fournisseur de recherche de lieux. Connectez-vous pour accéder à votre compte, à l’historique des commandes et aux produits de données premium.',
+    },
+  },
+  napl: {
+    welcome: {
+      title: 'Découvrez plus de 100 ans de photos de la BNA',
+      description: 'La Bibliothèque nationale de photos aériennes du Canada conserve plus d’un siècle de photographies aériennes. Explorez des vues historiques des paysages, des villes et de l’aménagement du territoire au Canada.',
+    },
+    collections: {
+      title: 'Collections de photos',
+      description: 'Choisissez l’accès libre et gratuit (800 ppp) ou des produits payants en haute résolution, numériques ou imprimés.',
+    },
+    'map-search': {
+      title: 'Rechercher par lieu',
+      description: 'Dessinez sur la carte ou saisissez des coordonnées pour définir votre zone de recherche. Les photos de cette zone seront affichées.',
+    },
+    results: {
+      title: 'Résultats de photos',
+      description: 'Parcourez des photos aériennes de l’histoire du Canada. Cliquez sur une photo pour consulter ses détails, l’ajouter à votre valise ou commander des tirages.',
+    },
+    valise: {
+      title: 'Valise - votre sélection',
+      description: 'Ajoutez des photos à votre valise pour passer une commande groupée. Gérez votre sélection et passez à la caisse lorsque vous êtes prêt.',
+    },
+    preferences: {
+      title: 'Téléchargements, préférences et profil',
+      description: 'Accédez aux téléchargements et aux préférences avec les boutons en haut à droite. Personnalisez votre expérience : changez la carte de base, choisissez la langue et activez le mode sombre. Connectez-vous pour accéder à votre compte et à l’historique des commandes.',
+    },
+  },
+};
+
+const LOCALIZED_FRENCH_TOUR_STEPS = {
+  eodms: EODMS_TOUR_STEPS.map((step) => ({ ...step, ...FRENCH_TOUR_STEPS.eodms[step.id] })),
+  napl: NAPL_TOUR_STEPS.map((step) => ({ ...step, ...FRENCH_TOUR_STEPS.napl[step.id] })),
+};
+
+export function getTourSteps(experience: 'eodms' | 'napl', language: Language): TourStep[] {
+  if (language === 'fr') return LOCALIZED_FRENCH_TOUR_STEPS[experience];
+  return experience === 'napl' ? NAPL_TOUR_STEPS : EODMS_TOUR_STEPS;
+}

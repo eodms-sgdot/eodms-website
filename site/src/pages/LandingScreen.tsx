@@ -20,7 +20,7 @@ import AuthPanel from '../components/AuthPanel';
 import TermsOfUseDialog from '../components/TermsOfUseDialog';
 import InteractiveTour, { type TourStep } from '../components/InteractiveTour';
 import { useTour } from '../hooks/useTour';
-import { EODMS_TOUR_STEPS, NAPL_TOUR_STEPS } from '../config/tourSteps.config';
+import { getTourSteps } from '../config/tourSteps.config';
 import type { STACCollection, STACItem } from '../types';
 import { createDateRange } from '../utils/DateUtils';
 import { customDateRange, DateSearchError } from '../utils/PartialDates';
@@ -85,12 +85,12 @@ interface LandingScreenProps {
 
 export default function LandingScreen({ experience }: LandingScreenProps) {
   const { isActive: tourActive, startTour, endTour } = useTour();
-  const tourSteps = experience.id === 'napl' ? NAPL_TOUR_STEPS : EODMS_TOUR_STEPS;
   const [searchParams, setSearchParams] = useSearchParams();
   
   const { stacEndpoint, searchLimit, setSearchLimit, searchTemporal, setSearchTemporal, searchStartDate, setSearchStartDate, searchEndDate, setSearchEndDate,
     username, authToken, getValidAuthToken, isAuthOpen, setIsAuthOpen,
     displayMode, bbox, setBbox, filters, language, setLanguage, t } = useContext(AppContext)!;
+  const tourSteps = getTourSteps(experience.id === 'napl' ? 'napl' : 'eodms', language);
   
   const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
   const [manualTermsOpen, setManualTermsOpen] = useState(false);
