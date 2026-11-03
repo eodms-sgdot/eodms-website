@@ -1,7 +1,8 @@
-import { useContext, useState } from "react";
+import { useContext } from "react";
 import type { FilterValue, STACQueryable } from "../../types";
 import { Box, FormControl, InputLabel, MenuItem, Select, TextField, type SelectChangeEvent } from "@mui/material";
 import { AppContext } from "../../AppContext";
+import { useSyncFilterData } from './useSyncFilterData';
 
 /**
  * The properties required to populate the filter field for an integer type.
@@ -52,9 +53,7 @@ const StringFilter: React.FC<StringFilterProps> = ({
     updateFilterHandler
 }) => {
   const {t} = useContext(AppContext)!;
-  const [localValue, setLocalValue] = useState<string>((filterData.value as string) ?? '');
-  const [valid, setValid] = useState<boolean>(true);
-  const [localOperation, setLocalOperation] = useState<string>(filterData.operation && filterData.operation != '' ? filterData.operation : '=');
+  const { localValue, setLocalValue, localOperation, setLocalOperation, valid, setValid } = useSyncFilterData(filterData);
 
   const isValueValid = (value: string, operation: string) => {
     if (value === '') return true;

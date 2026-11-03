@@ -1,8 +1,9 @@
 import { Box, FormControl, InputLabel, MenuItem, Select, TextField } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
-import { useState, useContext } from 'react';
+import { useContext } from 'react';
 import type { STACQueryable, FilterValue } from '../../types';
 import { AppContext } from '../../AppContext';
+import { useSyncFilterData } from './useSyncFilterData';
 
 /**
  * The properties required to populate the filter field for an integer type.
@@ -53,9 +54,7 @@ const IntegerFilter: React.FC<IntegerFilterProps> = ({
   updateFilterHandler,
 }) => {
   const {t} = useContext(AppContext)!;
-  const [localValue, setLocalValue] = useState<string>((filterData.value as string) ?? '');
-  const [valid, setValid] = useState<boolean>(true);
-  const [localOperation, setLocalOperation] = useState<string>(filterData.operation && filterData.operation != '' ? filterData.operation : '=');
+  const { localValue, setLocalValue, localOperation, setLocalOperation, valid, setValid } = useSyncFilterData(filterData);
   const minimum = queryable.minimum ?? -Infinity;
   const maximum = queryable.maximum ?? Infinity;
 

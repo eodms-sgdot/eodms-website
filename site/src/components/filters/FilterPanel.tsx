@@ -219,7 +219,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                                     </Box>
                                                 ) : (
                                                     <FilterWidget
-                                                        key={`${collectionName}-queryable-${qName}`}
+                                                        key={`${collectionName}-queryable-${qName}-${(valuesMap.get(collectionName)?.get(qName) ?? []).length}`}
                                                         collectionName={collectionName}
                                                         filterData={valuesMap.get(collectionName)?.get(qName) ?? [{ id: `${qName}-0`, fieldKey: qName }]} 
                                                         qName={qName}

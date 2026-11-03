@@ -256,29 +256,28 @@ export default function SearchPanel({
    * Set selected collections to match filters saved in session
    */
   useEffect(() => {
-    if (fixedCollectionId) return;
+    if (fixedCollectionId || !localStorage.getItem(fields.filters)) return;
 
-    if(localStorage.getItem(fields.filters)) { 
-      setSelectedCollections([]);
-      const sessionFilters = JSON.parse(localStorage.getItem(fields.filters) as string);
+    setSelectedCollections([]);
+    const sessionFilters = JSON.parse(localStorage.getItem(fields.filters) as string);
 
-      Object.keys(sessionFilters).forEach((key) => {
-        Object.values(collections).forEach((collection) => {
-          if(collection.id === key) {
-            setSelectedCollections(prev => prev.includes(collection) ? prev.filter(x => x !== collection) : [...prev, collection])
-          }
-        });
+    Object.keys(sessionFilters).forEach((key) => {
+      Object.values(collections).forEach((collection) => {
+        if(collection.id === key) {
+          setSelectedCollections(prev => prev.includes(collection) ? prev.filter(x => x !== collection) : [...prev, collection])
+        }
       });
-    }
+    });
 
   }, [collections, fixedCollectionId, setSelectedCollections]);
 
   /**
    * Function that clears the filters
    */
-  const clearFilters= (() => {
-        setFilters({});
-    });
+  const clearFilters = useCallback(() => {
+    setFilters({});
+    localStorage.removeItem(fields.filters);
+  }, []);
 
   /**
    * Function that clears the selected collections
