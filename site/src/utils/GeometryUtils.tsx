@@ -1,7 +1,6 @@
 import type { Geometry } from 'geojson';
 import { coordEach } from '@turf/meta';
 import type { STACItem } from '../types';
-import { getShortestLongitudeBounds } from './Antimeridian';
 
 export const getLatLonCoordsFromGeometry = (geometry: Geometry): number[][] => {
   const coords: number[][] = [];
@@ -15,14 +14,13 @@ export const getLatLonCoordsFromGeometry = (geometry: Geometry): number[][] => {
 };
 
 /**
- * Computes the combined [W, S, E, N] extent using the shortest longitude arc, falling back to each item's bbox.
+ * Computes the combined [W, S, E, N] extent of the given items' footprints, falling back to each item's bbox.
  * Always returns a new array so repeated zooms to the same extent still trigger.
  */
 export const getItemsExtent = (items: STACItem[]): [number, number, number, number] | null => {
-  const longitudes: number[] = [];
-  let south = Infinity, north = -Infinity;
+  let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
   const extend = (lon: number, lat: number) => {
-    longitudes.push(lon);
+    west = Math.min(west, lon); east = Math.max(east, lon);
     south = Math.min(south, lat); north = Math.max(north, lat);
   };
 
@@ -38,7 +36,5 @@ export const getItemsExtent = (items: STACItem[]): [number, number, number, numb
     }
   }
 
-  if (longitudes.length === 0) return null;
-  const [west, east] = getShortestLongitudeBounds(longitudes);
-  return [west, south, east, north];
+  return Number.isFinite(west) ? [west, south, east, north] : null;
 };

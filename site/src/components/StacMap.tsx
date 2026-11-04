@@ -15,7 +15,6 @@ import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
 import 'leaflet-geosearch/assets/css/leaflet.css';
 import type { STACItem } from '../types'; 
 import { getLatLonCoordsFromGeometry } from '../utils/GeometryUtils';
-import { splitAntimeridianGeometry } from '../utils/Antimeridian';
 import RotatedImageOverlay from 'react-leaflet-rotated-imageoverlay';
 import type { SearchResult } from 'leaflet-geosearch/dist/providers/provider.js';
 import { GeolocatorProvider } from './providers/GeolocatorProvider';
@@ -828,9 +827,6 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
   const [coordinateValues, setCoordinateValues] = useState(['', '']);
   const [coordinateError, setCoordinateError] = useState(false);
   const [coordinateZoomBounds, setCoordinateZoomBounds] = useState<[number, number, number, number] | null>(null);
-  const displaySearchResults = useMemo(() => searchResults.map(item => item.geometry
-    ? { ...item, geometry: splitAntimeridianGeometry(item.geometry) }
-    : item), [searchResults]);
   const coordinateLabels = [t('longitude'), t('latitude')];
   useEffect(() => {
     if (resultLayerControlRef.current) {
@@ -962,7 +958,7 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
         </DialogActions>
       </Dialog>
 
-      {resultLayer === 'footprints' && displaySearchResults.map((item, index) => {
+      {resultLayer === 'footprints' && searchResults.map((item, index) => {
         const isSelected = selectedFootprints.has(item.id);
         const isHovered = item.id === hoveredItem;
         const color = isSelected ? highlightColor : brandColor;
