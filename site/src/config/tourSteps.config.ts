@@ -5,7 +5,7 @@ export const EODMS_TOUR_STEPS: TourStep[] = [
   {
     id: 'welcome',
     title: 'Canada\'s EO. Always On.',
-    description: 'Like our flagship RADARSAT synthetic aperture radar program, NRCan\'s mission is to keep Earth observation moving day or night, in all weather. Always on. Discover Canadian EO in the new EODMS; Re-built to serve today\'s EO community.',
+    description: 'Like RADARSAT, NRCan moves Earth observation, day or night, in all weather. From antenna to user. Always on. Discover Canadian EO in the new EODMS. Re-built to serve today\'s EO community.',
     presentation: 'sar-welcome',
   },
   {

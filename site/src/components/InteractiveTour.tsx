@@ -37,131 +37,6 @@ interface InteractiveTourProps {
   onStepChange?: (step: TourStep, stepIndex: number) => void;
 }
 
-const AURORA_WISPS = [
-  { y: 0.12, length: 0.68, height: 0.11, amplitude: 0.045, frequency: 10, speed: 0.72, phase: 0.4, delay: 0, period: 4.8, duration: 1.7, direction: 1, colour: '103, 255, 180' },
-  { y: 0.24, length: 0.78, height: 0.09, amplitude: 0.055, frequency: 8, speed: 0.86, phase: 2.2, delay: 1.3, period: 5.3, duration: 1.9, direction: -1, colour: '77, 228, 202' },
-  { y: 0.08, length: 0.58, height: 0.12, amplitude: 0.04, frequency: 12, speed: 0.66, phase: 4.1, delay: 2.4, period: 4.5, duration: 1.5, direction: 1, colour: '163, 255, 190' },
-  { y: 0.32, length: 0.72, height: 0.1, amplitude: 0.05, frequency: 9, speed: 0.8, phase: 1.6, delay: 3.2, period: 5.1, duration: 1.8, direction: -1, colour: '99, 222, 233' },
-  { y: 0.18, length: 0.62, height: 0.13, amplitude: 0.04, frequency: 11, speed: 0.94, phase: 5.3, delay: 0.8, period: 4.6, duration: 1.6, direction: 1, colour: '168, 255, 196' },
-  { y: 0.27, length: 0.56, height: 0.08, amplitude: 0.06, frequency: 13, speed: 0.7, phase: 3.3, delay: 2.1, period: 5.5, duration: 1.5, direction: -1, colour: '113, 207, 255' },
-];
-
-function AuroraCurtainOverlay() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-
-    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let frame = 0;
-    let start: number | null = null;
-    let width = 0;
-    let height = 0;
-    let ratio = 1;
-
-    const draw = (timestamp: number) => {
-      if (start === null) start = timestamp;
-      const elapsed = motion.matches ? 2.4 : (timestamp - start) / 1000;
-      context.clearRect(0, 0, width, height);
-      context.globalCompositeOperation = 'screen';
-
-      for (const wisp of AURORA_WISPS) {
-        const age = (elapsed + wisp.delay) % wisp.period;
-        if (age > wisp.duration) continue;
-
-        const progress = age / wisp.duration;
-        const fade = Math.sin(Math.PI * progress) ** 0.7;
-        const head = wisp.direction === 1
-          ? -wisp.length + progress * (1 + wisp.length)
-          : 1 + wisp.length - progress * (1 + wisp.length);
-        const centerY = height * (wisp.y + Math.sin(elapsed * wisp.speed + wisp.phase) * 0.018);
-        const maxThickness = height * wisp.height;
-        const gradient = context.createLinearGradient(0, centerY - maxThickness, 0, centerY + maxThickness);
-        gradient.addColorStop(0, `rgba(${wisp.colour}, 0)`);
-        gradient.addColorStop(0.35, `rgba(${wisp.colour}, 0.28)`);
-        gradient.addColorStop(0.55, `rgba(${wisp.colour}, 0.7)`);
-        gradient.addColorStop(0.78, `rgba(${wisp.colour}, 0.18)`);
-        gradient.addColorStop(1, `rgba(${wisp.colour}, 0)`);
-        context.strokeStyle = gradient;
-
-        const strands = Math.max(120, Math.round(width / 8));
-        for (let strand = 0; strand < strands; strand += 1) {
-          const position = strand / (strands - 1);
-          const x = width * (head - wisp.direction * wisp.length * (1 - position));
-          const wave = position * wisp.frequency + elapsed * wisp.speed + wisp.phase;
-          const flutter = 0.72 + 0.28 * Math.sin(position * 37 + elapsed * 12 + wisp.phase);
-          const edge = Math.sin(Math.PI * position) ** 0.45;
-          const center = centerY
-            + Math.sin(wave) * height * wisp.amplitude
-            + Math.sin(wave * 0.57 + wisp.phase) * height * wisp.amplitude * 0.42;
-          const thickness = maxThickness * (0.55 + 0.45 * Math.sin(wave * 0.8));
-          const bend = Math.sin(wave + 1.2) * width * 0.006;
-
-          context.beginPath();
-          context.moveTo(x, center - thickness);
-          context.bezierCurveTo(
-            x + bend, center - thickness * 0.3,
-            x - bend * 0.7, center + thickness * 0.35,
-            x + Math.sin(wave + 2) * width * 0.003, center + thickness,
-          );
-          context.globalAlpha = fade * edge * flutter * 0.42;
-          context.lineWidth = Math.max(4, width / 110);
-          context.stroke();
-          context.globalAlpha = fade * edge * flutter * 1.1;
-          context.lineWidth = Math.max(1.4, width / 670);
-          context.stroke();
-        }
-      }
-
-      context.globalCompositeOperation = 'source-over';
-      context.globalAlpha = 1;
-      if (!motion.matches) frame = window.requestAnimationFrame(draw);
-    };
-
-    const resize = () => {
-      const bounds = canvas.getBoundingClientRect();
-      ratio = Math.min(window.devicePixelRatio || 1, 2);
-      width = bounds.width;
-      height = bounds.height;
-      canvas.width = Math.round(width * ratio);
-      canvas.height = Math.round(height * ratio);
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      if (motion.matches) draw(0);
-    };
-
-    const restart = () => {
-      window.cancelAnimationFrame(frame);
-      start = null;
-      if (motion.matches) draw(0);
-      else frame = window.requestAnimationFrame(draw);
-    };
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    window.addEventListener('resize', resize);
-    motion.addEventListener('change', restart);
-    resize();
-    if (!motion.matches) frame = window.requestAnimationFrame(draw);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('resize', resize);
-      motion.removeEventListener('change', restart);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-    />
-  );
-}
-
 export default function InteractiveTour({
   steps,
   onComplete,
@@ -384,7 +259,6 @@ export default function InteractiveTour({
                   '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                 }}
               />
-              <AuroraCurtainOverlay />
               {[{ left: '64.86%', top: '25.63%' }, { left: '64.78%', top: '26.65%' }].map((beacon) => (
                 <Box
                   key={beacon.left}
