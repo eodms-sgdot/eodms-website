@@ -290,6 +290,7 @@ export default function ResultsPanel({
   const [columnPrefs, setColumnPrefs] = useState<string[] | null>(loadColumnPrefs);
   const [columnMenuEl, setColumnMenuEl] = useState<HTMLElement | null>(null);
   const [exportError, setExportError] = useState(false);
+  const [exportMenuEl, setExportMenuEl] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const brandColor = theme.palette.primary.main;
   const highlightColor = getHighlightColor(theme.palette.mode);
@@ -695,28 +696,82 @@ export default function ResultsPanel({
 
   const metadataThumbUrl = activeMetadata ? buildThumbUrl(activeMetadata) : undefined;
 
-  const handleExportResults = () => {
+  const getCollectionName = () => {
+    const collections = [...new Set(loadedResults.map(item => item.collection))];
+    return (collections.length === 1 ? collections[0] : "multiple-collections")
+      .replace(/[<>:"/\\|?*]/g, "_");
+  };
+
+  const getTimestamp = () => {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  };
+
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  };
+
+  const handleExportAsGeoJSON = () => {
     if (isSearching || loadedResults.length === 0) return;
     setExportError(false);
     try {
-      const collections = [...new Set(loadedResults.map(item => item.collection))];
-      const collection = (collections.length === 1 ? collections[0] : "multiple-collections")
-        .replace(/[<>:"/\\|?*]/g, "_");
-      const now = new Date();
-      const pad = (value: number) => String(value).padStart(2, "0");
-      const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const collection = getCollectionName();
+      const timestamp = getTimestamp();
       const content = JSON.stringify({ type: "FeatureCollection", features: loadedResults }, null, 2);
-      const url = URL.createObjectURL(new Blob([content], { type: "application/geo+json;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `eodms-${collection}-${loadedResults.length}-${timestamp}.json`;
-      document.body.appendChild(link);
-      try {
-        link.click();
-      } finally {
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      }
+      const filename = `eodms-${collection}-${loadedResults.length}-${timestamp}.json`;
+      downloadFile(content, filename, "application/geo+json;charset=utf-8");
+    } catch {
+      setExportError(true);
+    }
+  };
+
+  const handleExportAsCSV = () => {
+    if (isSearching || loadedResults.length === 0) return;
+    setExportError(false);
+    try {
+      const collection = getCollectionName();
+      const timestamp = getTimestamp();
+
+      // Collect all unique property keys from all items
+      const allKeys = new Set<string>();
+      loadedResults.forEach(item => {
+        Object.keys(item.properties || {}).forEach(key => allKeys.add(key));
+      });
+      const headers = ["id", "collection", "geometry_type", ...Array.from(allKeys).sort()];
+
+      // Build CSV rows
+      const rows: string[] = [];
+      rows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(","));
+
+      loadedResults.forEach(item => {
+        const values: string[] = [
+          item.id,
+          item.collection,
+          item.geometry?.type || "",
+          ...Array.from(allKeys).map(key => {
+            const value = item.properties?.[key];
+            if (value === null || value === undefined) return "";
+            const strValue = String(value);
+            return `"${strValue.replace(/"/g, '""')}"`;
+          })
+        ];
+        rows.push(values.join(","));
+      });
+
+      const content = rows.join("\n");
+      const filename = `eodms-${collection}-${loadedResults.length}-${timestamp}.csv`;
+      downloadFile(content, filename, "text/csv;charset=utf-8");
     } catch {
       setExportError(true);
     }
@@ -1479,7 +1534,8 @@ export default function ResultsPanel({
               <Tooltip title={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}>
                 <span>
                   <Button aria-label={`${t("exportResults")} (${loadedResults.length.toLocaleString()})`}
-                    disabled={isSearching || loadedResults.length === 0} onClick={handleExportResults}>
+                    disabled={isSearching || loadedResults.length === 0} onClick={event => setExportMenuEl(event.currentTarget)}
+                    aria-haspopup="menu" aria-expanded={!!exportMenuEl}>
                     <Badge badgeContent={loadedResults.length.toLocaleString()} max={Number.MAX_SAFE_INTEGER} color="secondary"
                       sx={{ mr: loadedResults.length >= 1000 ? 1.5 : 0.5, "& .MuiBadge-badge": { fontSize: 10, height: 16, minWidth: 16, px: 0.5 } }}>
                       <DownloadIcon fontSize="small" />
@@ -1693,6 +1749,20 @@ export default function ResultsPanel({
           </Tooltip>
         </DialogActions>
       </Dialog>
+      <Menu open={!!exportMenuEl} anchorEl={exportMenuEl} onClose={() => setExportMenuEl(null)}>
+        <MenuItem onClick={() => {
+          handleExportAsGeoJSON();
+          setExportMenuEl(null);
+        }}>
+          <ListItemText>{t("exportAsGeoJSON")}</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => {
+          handleExportAsCSV();
+          setExportMenuEl(null);
+        }}>
+          <ListItemText>{t("exportAsCSV")}</ListItemText>
+        </MenuItem>
+      </Menu>
       <Snackbar open={exportError} autoHideDuration={5000} onClose={() => setExportError(false)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
         <Alert severity="error" onClose={() => setExportError(false)}>{t("errorExportResults")}</Alert>
       </Snackbar>

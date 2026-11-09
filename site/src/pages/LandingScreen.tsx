@@ -660,8 +660,18 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
       let targetCollection = allCollections.find(c => c.id === collectionId);
       
       if (!targetCollection) {
-        console.warn(`Tour demo search: Collection "${collectionId}" not found. Available: ${allCollections.map(c => c.id).join(', ')}`);
-        return;
+        // If not found in loaded collections, try to fetch it directly
+        console.warn(`Tour demo search: Collection "${collectionId}" not found in loaded collections. Attempting to fetch directly...`);
+        try {
+          const queryablesToken = authToken ? await getValidAuthToken() : null;
+          targetCollection = await getCollection(stacEndpoint, collectionId, queryablesToken);
+          console.log(`Successfully fetched collection "${collectionId}" directly`);
+        } catch (error) {
+          console.error(`Failed to fetch collection "${collectionId}":`, error);
+          console.warn(`Tour demo search failed: Collection "${collectionId}" not found. Available: ${allCollections.map(c => c.id).join(', ')}`);
+          setSearchError(t('errorFetch'));
+          return;
+        }
       }
 
       console.log(`Tour: Searching for ${collectionId} with temporal option ${temporalOption}`);
@@ -678,8 +688,9 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
       }, 50);
     } catch (error) {
       console.error('Tour demo search failed:', error);
+      setSearchError(t('errorFetch'));
     }
-  }, [allCollections, aoiGeometry]);
+  }, [allCollections, aoiGeometry, authToken, stacEndpoint, t, getValidAuthToken]);
 
   const getCurrentSearchUrl = async () => {
     let prepared;
