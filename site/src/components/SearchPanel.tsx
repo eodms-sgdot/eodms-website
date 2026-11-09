@@ -212,10 +212,6 @@ export default function SearchPanel({
               const current = collections.find(collection => collection.id === selected.id);
               return current ? [current] : [];
             });
-            // Auto-select first collection if none is selected
-            if (updated.length === 0 && collections.length > 0) {
-              return [collections[0]];
-            }
             return updated;
           });
         }
@@ -252,24 +248,6 @@ export default function SearchPanel({
     setAuthErrorMessage, setIsAuthOpen, getValidAuthToken,
   ]);
 
-  /**
-   * Set selected collections to match filters saved in session
-   */
-  useEffect(() => {
-    if (fixedCollectionId || !localStorage.getItem(fields.filters)) return;
-
-    setSelectedCollections([]);
-    const sessionFilters = JSON.parse(localStorage.getItem(fields.filters) as string);
-
-    Object.keys(sessionFilters).forEach((key) => {
-      Object.values(collections).forEach((collection) => {
-        if(collection.id === key) {
-          setSelectedCollections(prev => prev.includes(collection) ? prev.filter(x => x !== collection) : [...prev, collection])
-        }
-      });
-    });
-
-  }, [collections, fixedCollectionId, setSelectedCollections]);
 
   /**
    * Function that clears the filters

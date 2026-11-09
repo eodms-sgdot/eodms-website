@@ -15,7 +15,6 @@ import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { eodmsExperience, naplExperience } from './experiences';
 import axios from 'axios';
-import { isTemporalFilterField } from './utils/FilterBuilder';
 
 // Refresh this long before the access token expires so in-flight requests don't carry a stale token.
 const REFRESH_MARGIN_MS = 60_000;
@@ -45,6 +44,11 @@ function clearUnrefreshableSession() {
 }
 clearUnrefreshableSession();
 localStorage.removeItem('bbox');
+
+// Clear stale search criteria to prevent inconsistent search results.
+// Preferences (basemap, dark mode, language, auth) are preserved.
+[fields.filters, fields.searchLimit, fields.searchTemporal, fields.searchStartDate, fields.searchEndDate]
+  .forEach((key) => localStorage.removeItem(key));
 
 function getInitialStacEndpoint(fallback: string): string {
   const savedEndpoint = localStorage.getItem(fields.stacEndpoint);
@@ -91,9 +95,9 @@ export default function App() {
 
   const [searchLimit, setSearchLimit] = useState<number>(100);
 
-  const [searchTemporal, setSearchTemporal] = useState<string>(() => localStorage.getItem(fields.searchTemporal) ?? 'anytime');
-  const [searchStartDate, setSearchStartDate] = useState<string>(() => localStorage.getItem(fields.searchStartDate) ?? '');
-  const [searchEndDate, setSearchEndDate] = useState<string>(() => localStorage.getItem(fields.searchEndDate) ?? '');
+  const [searchTemporal, setSearchTemporal] = useState<string>('anytime');
+  const [searchStartDate, setSearchStartDate] = useState<string>('');
+  const [searchEndDate, setSearchEndDate] = useState<string>('');
   const [locationSearchProvider, setLocationSearchProvider] = useState<string>(() => localStorage.getItem(fields.locationSearchProvider) ?? 'osm');
 
   const [displayMode, setDisplayMode] = useState<DisplayMode | null>(() => {
@@ -124,18 +128,7 @@ export default function App() {
     return getBaseMap(savedBaseMapId)?.name ?? 'osm';
   });
   const [baseMapLayer, setBaseMapLayer] = useState<BaseMap|undefined>(() => getBaseMap(baseMapId));
-  const [filters, setFilters] = useState<Record<string, FilterValue[]>>(() => {
-    try {
-      const storedFilters = JSON.parse(localStorage.getItem(fields.filters) as string) as Record<string, FilterValue[]> | null;
-      if (!storedFilters) return {};
-      Object.entries(storedFilters).forEach(([collectionName, collectionFilters]) => {
-        storedFilters[collectionName] = collectionFilters.filter(filter => !isTemporalFilterField(filter.fieldKey));
-      });
-      return storedFilters;
-    } catch {
-      return {};
-    }
-  });
+  const [filters, setFilters] = useState<Record<string, FilterValue[]>>({});
 
   const refreshInFlight = useRef<Promise<string> | null>(null);
 
@@ -245,23 +238,16 @@ export default function App() {
   };
 
   /**
-   * Updates the user's saved session when any of the values in this effect are changed.
+   * Updates the user's saved preferences when any of the values in this effect are changed.
+   * Search criteria (filters, temporal, dates, etc.) are NOT persisted to avoid stale state issues.
    */
   useEffect(() => {
     
-    // General
+    // Preferences
     updateSession(fields.language, language);
     updateSession(fields.stacEndpoint, stacEndpoint);
     updateSession(fields.displayMode, displayMode);
     updateSession(fields.baseMap, baseMapId);
-
-    
-    // Search
-    updateSession(fields.filters, JSON.stringify(filters));
-    updateSession(fields.searchLimit, searchLimit.toString());
-    updateSession(fields.searchTemporal, searchTemporal);
-    updateSession(fields.searchStartDate, searchStartDate);
-    updateSession(fields.searchEndDate, searchEndDate);
     updateSession(fields.locationSearchProvider, locationSearchProvider);
 
     // Authentication
@@ -272,9 +258,8 @@ export default function App() {
     updateSession(fields.refreshExpiry, refreshExpiry);
     
   }, [
-    language, stacEndpoint, displayMode, baseMapId,
-    filters, searchLimit, searchTemporal, searchStartDate, searchEndDate, 
-    locationSearchProvider, username, authToken, authExpiry, refreshToken, refreshExpiry
+    language, stacEndpoint, displayMode, baseMapId, locationSearchProvider,
+    username, authToken, authExpiry, refreshToken, refreshExpiry
   ]);
 
   /**

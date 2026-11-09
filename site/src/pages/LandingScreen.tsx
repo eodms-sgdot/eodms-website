@@ -51,7 +51,6 @@ import { NAPL_SEARCH_LOADERS, SEARCH_LOADERS } from '../components/searchLoaderL
 import Blind from '../components/Blind';
 import { BlindContainerContext } from '../components/BlindContainerContext';
 import { isStagingEndpoint } from '../utils/StagingUtils';
-import { fields } from '../session';
 import { AoiImportError, buildAoiSpatialFilter, type AoiGeometry } from '../utils/GeoJsonAoi';
 
 const DRAWER_WIDTH = 320;
@@ -59,7 +58,6 @@ const MIN_RESULTS_WIDTH = 320;
 const MAX_RESULTS_WIDTH = 640;
 const MIN_MAP_WIDTH = 320;
 const PANEL_RESIZE_BREAKPOINT = DRAWER_WIDTH + MIN_RESULTS_WIDTH + MIN_MAP_WIDTH;
-const SORT_OPTIONS = new Set(['', '-datetime', '+datetime']);
 // Matches useIsMobile's default so the first render agrees with it.
 const MOBILE_BREAKPOINT = 1024;
 
@@ -145,14 +143,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const [clearAoiTrigger, setClearAoiTrigger] = useState(0);
   const [supportsSearch, setSupportsSearch] = useState<boolean>(false);
   const [supportsSorting, setSupportsSorting] = useState<boolean>(false);
-  const [sortby, setSortby] = useState<string>(() => {
-    const savedSort = localStorage.getItem(fields.sortBy);
-    return savedSort !== null && SORT_OPTIONS.has(savedSort) ? savedSort : '-datetime';
-  });
-
-  useEffect(() => {
-    localStorage.setItem(fields.sortBy, sortby);
-  }, [sortby]);
+  const [sortby, setSortby] = useState<string>('-datetime');
 
   const isMobile = useIsMobile(MOBILE_BREAKPOINT);
 
@@ -532,7 +523,6 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     }
 
     const params: StacSearchParams = {
-      ...(!searchGeometry && searchBbox && { bbox: searchBbox }),
       collections: collectionIDs,
       limit: searchLimit,
       ...(collectionsToUse.length <= 1 && {sortby}),
@@ -581,7 +571,26 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
       const naplThumbnailFilter = collectionIDs.length === 1 && collectionIDs[0] === 'NAPL'
         ? buildNaplThumbnailAvailableFilter(filters.NAPL ?? [], queryablesByCollection[0])
         : '';
-      const spatialFilter = searchGeometry ? buildAoiSpatialFilter(searchGeometry) : '';
+      
+      // Use unified spatial filter approach: convert bbox to geometry filter for consistency
+      let spatialFilter = '';
+      if (searchGeometry) {
+        spatialFilter = buildAoiSpatialFilter(searchGeometry);
+      } else if (searchBbox) {
+        const [west, south, east, north] = searchBbox;
+        const bboxGeometry: AoiGeometry = {
+          type: 'Polygon',
+          coordinates: [[
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south]
+          ]]
+        };
+        spatialFilter = buildAoiSpatialFilter(bboxGeometry);
+      }
+      
       const filtersText = [userFiltersText && `(${userFiltersText})`, geometryValidityFilter, naplThumbnailFilter, spatialFilter].filter(Boolean).join(' AND ');
       if (filtersText) params.filter = filtersText;
       return { params, geometryValidityCollectionIds };
