@@ -1,12 +1,14 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { AppContext } from "../../AppContext";
-import { Accordion, AccordionDetails, AccordionSummary, Box, Button, CircularProgress, IconButton, Link, TextField, Tooltip, Typography } from "@mui/material";
+import { Accordion, AccordionDetails, AccordionSummary, Box, Button, CircularProgress, Divider, IconButton, Link, TextField, Tooltip, Typography } from "@mui/material";
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { FilterValue, STACCollection, STACQueryable} from "../../types";
 import FilterWidget from "./FilterWidget";
+import QueryableChoiceFilter from "./QueryableChoiceFilter";
 import { getQueryables } from "../../services/StacService";
 import { isTemporalFilterField } from "../../utils/FilterBuilder";
+import { NAPL_THUMBNAIL_FILTER_FIELD, hasGeometryValidityQueryable, hasNaplOrderKeyQueryable } from "../../utils/QueryableFilterUtils";
 
 /**
  * The properties required to populate the filters panel.
@@ -172,7 +174,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
                     {
                         [...queryablesMap.entries()].map(([collectionName, queryables]) => (
-                            <Accordion 
+                                <Accordion 
                                 key={`${collectionName}-search-panel`}
                                 defaultExpanded={selectedCollections.length === 1}
                                 disableGutters
@@ -189,19 +191,18 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 </AccordionSummary>
                                 <AccordionDetails>
                                     <Box key={collectionName} sx={{ mb: 1 }}>
-                                    {
-                                        Object.entries(queryables).filter(([qName, queryable]) =>
-                                            !isTemporalFilterField(qName) && (qName === 'geometry_valid' ||
-                                            queryable.type !== 'geometry-any'
-                                            )
-                                        ).length === 0 ? (
+                                    {(() => {
+                                        const isNapl = collectionName === 'NAPL';
+                                        const queryableEntries = Object.entries(queryables).filter(([qName, queryable]) =>
+                                            !isTemporalFilterField(qName) &&
+                                            !(isNapl && qName === 'geometry_valid') &&
+                                            (qName === 'geometry_valid' || queryable.type !== 'geometry-any')
+                                        );
+
+                                        return queryableEntries.length === 0 ? (
                                             <Typography sx={{fontSize: 'small'}}>{t('noFilters')}</Typography>
                                         ) : (
-                                            Object.entries(queryables).filter(([qName, queryable]) =>
-                                                !isTemporalFilterField(qName) && (qName === 'geometry_valid' ||
-                                                queryable.type !== 'geometry-any'
-                                                )
-                                            ).map(([qName, queryable]) =>
+                                            queryableEntries.map(([qName, queryable]) =>
                                                 !queryable ? (
                                                     <Typography key={`${collectionName}-queryable-${qName}`} sx={{fontSize:'small'}}>{t('noFilters')}</Typography>
                                                 ) : qName === 'geometry_valid' ? (
@@ -228,8 +229,36 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                                     />
                                                 )
                                             )
-                                        )
-                                    }
+                                        );
+                                    })()}
+                                    {collectionName === 'NAPL' && (
+                                        <>
+                                            <Divider sx={{ my: 2 }} />
+                                            <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('naplSpecialFilters')}</Typography>
+                                            {hasGeometryValidityQueryable(queryables) && (
+                                                <Box sx={{ mt: 0.5, mb: 1, width: '75vw', maxWidth: 576 }}>
+                                                    <TextField
+                                                        disabled
+                                                        size="small"
+                                                        label={queryables.geometry_valid.title || t('geometryValid')}
+                                                        value={t('trueValue')}
+                                                        sx={{ width: '100%' }}
+                                                    />
+                                                </Box>
+                                            )}
+                                            {hasNaplOrderKeyQueryable(queryables) && (
+                                                <QueryableChoiceFilter
+                                                    collectionName={collectionName}
+                                                    filterData={valuesMap.get(collectionName)?.get(NAPL_THUMBNAIL_FILTER_FIELD)?.[0] ?? {
+                                                        id: NAPL_THUMBNAIL_FILTER_FIELD,
+                                                        fieldKey: NAPL_THUMBNAIL_FILTER_FIELD,
+                                                    }}
+                                                    queryable={{ type: 'boolean', title: t('thumbnailAvailable') }}
+                                                    updateFilterHandler={updateFilters}
+                                                />
+                                            )}
+                                        </>
+                                    )}
                                     </Box>
                                 </AccordionDetails>
                             </Accordion>

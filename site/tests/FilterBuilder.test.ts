@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildGeometryValidityFilter, buildQueryableFilterClauses } from '../src/utils/QueryableFilterUtils.ts';
+import { buildGeometryValidityFilter, buildNaplThumbnailAvailableFilter, buildQueryableFilterClauses, NAPL_THUMBNAIL_FILTER_FIELD } from '../src/utils/QueryableFilterUtils.ts';
 import { hasUsableItemGeometry } from '../src/utils/STACItemUtils.ts';
 
 test('uses current queryables and supports array enums without adding geometry constraints', () => {
@@ -56,6 +56,18 @@ test('allows collections without geometry_valid in a multi-collection search', (
         { geometry_valid: { type: 'boolean' } },
         { platform: { type: 'string' } },
     ]), '(geometry_valid = TRUE OR geometry_valid IS NULL)');
+});
+
+test('builds the NAPL thumbnail-availability filter from its editable boolean choice', () => {
+    const queryables = { order_key: { type: 'string' } };
+    const any = [{ id: NAPL_THUMBNAIL_FILTER_FIELD, fieldKey: NAPL_THUMBNAIL_FILTER_FIELD }];
+    const available = [{ id: NAPL_THUMBNAIL_FILTER_FIELD, fieldKey: NAPL_THUMBNAIL_FILTER_FIELD, type: 'boolean', operation: '=', value: true }];
+    const unavailable = [{ id: NAPL_THUMBNAIL_FILTER_FIELD, fieldKey: NAPL_THUMBNAIL_FILTER_FIELD, type: 'boolean', operation: '=', value: false }];
+
+    assert.equal(buildNaplThumbnailAvailableFilter(any, queryables), '');
+    assert.equal(buildNaplThumbnailAvailableFilter(available, queryables), 'order_key IS NOT NULL');
+    assert.equal(buildNaplThumbnailAvailableFilter(unavailable, queryables), 'order_key IS NULL');
+    assert.equal(buildNaplThumbnailAvailableFilter(available, {}), '');
 });
 
 test('rejects explicitly invalid, missing, empty, or non-finite geometries', () => {

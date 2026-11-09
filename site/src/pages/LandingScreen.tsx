@@ -25,7 +25,7 @@ import type { STACCollection, STACItem } from '../types';
 import { createDateRange } from '../utils/DateUtils';
 import { customDateRange, DateSearchError } from '../utils/PartialDates';
 import { buildFilter } from '../utils/FilterBuilder';
-import { buildGeometryValidityFilter, hasGeometryValidityQueryable } from '../utils/QueryableFilterUtils';
+import { buildGeometryValidityFilter, buildNaplThumbnailAvailableFilter, hasGeometryValidityQueryable } from '../utils/QueryableFilterUtils';
 import LoadingMask from '../components/masker/LoadingMask';
 import { StacSearchService } from '../services/StacSearchService';
 import type { StacSearchParams, StacSearchResult } from '../services/StacSearchService';
@@ -578,8 +578,11 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
         hasGeometryValidityQueryable(queryablesByCollection[index]),
       );
       const geometryValidityFilter = buildGeometryValidityFilter(queryablesByCollection);
+      const naplThumbnailFilter = collectionIDs.length === 1 && collectionIDs[0] === 'NAPL'
+        ? buildNaplThumbnailAvailableFilter(filters.NAPL ?? [], queryablesByCollection[0])
+        : '';
       const spatialFilter = searchGeometry ? buildAoiSpatialFilter(searchGeometry) : '';
-      const filtersText = [userFiltersText && `(${userFiltersText})`, geometryValidityFilter, spatialFilter].filter(Boolean).join(' AND ');
+      const filtersText = [userFiltersText && `(${userFiltersText})`, geometryValidityFilter, naplThumbnailFilter, spatialFilter].filter(Boolean).join(' AND ');
       if (filtersText) params.filter = filtersText;
       return { params, geometryValidityCollectionIds };
   };

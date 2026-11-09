@@ -1,5 +1,7 @@
 import type { FilterValue, STACQueryable } from "../types";
 
+export const NAPL_THUMBNAIL_FILTER_FIELD = "thumbnail_available";
+
 const getQueryableType = (queryable: STACQueryable): string | undefined =>
   Array.isArray(queryable.type)
     ? queryable.type.find(typeName => typeName !== "null")
@@ -13,6 +15,26 @@ export const hasGeometryValidityQueryable = (
 ): boolean => {
   const queryable = queryables.geometry_valid;
   return Boolean(queryable && getQueryableType(queryable) === "boolean");
+};
+
+export const hasNaplOrderKeyQueryable = (
+  queryables: Record<string, STACQueryable>,
+): boolean => {
+  const queryable = queryables.order_key;
+  const type = queryable && (Array.isArray(queryable.type)
+    ? queryable.type.find(typeName => typeName !== "null")
+    : queryable.type);
+  return type === "string";
+};
+
+export const buildNaplThumbnailAvailableFilter = (
+  filters: FilterValue[],
+  queryables: Record<string, STACQueryable>,
+): string => {
+  if (!hasNaplOrderKeyQueryable(queryables)) return "";
+  const selection = filters.find(filter => filter.fieldKey === NAPL_THUMBNAIL_FILTER_FIELD);
+  if (selection?.operation !== "=" || typeof selection.value !== "boolean") return "";
+  return selection.value ? "order_key IS NOT NULL" : "order_key IS NULL";
 };
 
 export const buildGeometryValidityFilter = (
