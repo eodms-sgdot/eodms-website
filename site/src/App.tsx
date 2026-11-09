@@ -13,6 +13,7 @@ import { fields } from './session';
 import { isStagingEndpoint } from './utils/StagingUtils';
 import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
+import { decodeJWTPayload } from './utils/JWTUtils';
 import { eodmsExperience, naplExperience } from './experiences';
 import axios from 'axios';
 
@@ -30,7 +31,7 @@ function clearUnrefreshableSession() {
   if (!authToken) return;
   const username = localStorage.getItem(fields.username)?.trim();
   if (!username) {
-    [fields.username, fields.token, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+     [fields.username, fields.token, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
       .forEach((key) => localStorage.removeItem(key));
     return;
   }
@@ -39,7 +40,7 @@ function clearUnrefreshableSession() {
   if (refreshToken && refreshExpiry && !isRefreshTokenExpired(refreshExpiry)) return;
   if (!isRefreshRequired(localStorage.getItem(fields.expiry)) && !refreshToken) return;
 
-  [fields.username, fields.token, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+   [fields.username, fields.token, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
     .forEach((key) => localStorage.removeItem(key));
 }
 clearUnrefreshableSession();
@@ -113,6 +114,7 @@ export default function App() {
   const [stacEndpoint, setStacEndpoint] = useState(() => getInitialStacEndpoint(initialEndpoint));
   const showStagingBadge = isStagingEndpoint(stacEndpoint, import.meta.env.DEV, import.meta.env.VITE_EODMS_ENDPOINTS);
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem(fields.token));
+  const [_decodedToken, _setDecodedToken] = useState<string | null>(() => localStorage.getItem(fields.decodedToken));
   const [authExpiry, setAuthExpiry] = useState<string | null>(() => localStorage.getItem(fields.expiry));
   const [refreshToken, setRefreshToken] = useState<string | null>(() => localStorage.getItem(fields.refreshToken));
   const [refreshExpiry, setRefreshExpiry] = useState<string | null>(() => localStorage.getItem(fields.refreshExpiry));
@@ -212,6 +214,25 @@ export default function App() {
       window.removeEventListener('focus', check);
     };
   }, [authToken, authExpiry, refreshExpiry, getValidAuthToken]);
+
+  /**
+   * Decode the auth token and store the full payload in localStorage for inspection.
+   * Updates whenever the auth token changes (new login or token refresh).
+   */
+  useEffect(() => {
+    if (!authToken) {
+      _setDecodedToken(null);
+      localStorage.removeItem(fields.decodedToken);
+      return;
+    }
+
+    const decoded = decodeJWTPayload(authToken);
+    if (decoded) {
+      const decodedJson = JSON.stringify(decoded, null, 2);
+      _setDecodedToken(decodedJson);
+      localStorage.setItem(fields.decodedToken, decodedJson);
+    }
+  }, [authToken]);
 
   const { orders, isOrderingSupported, triggerNewOrder, expireOrder, refreshOrderStatus, clearOrderHistory } = useOrderPolling(
     (username ? username : ''),

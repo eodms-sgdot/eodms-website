@@ -19,6 +19,7 @@ export const fields = {
 
     username: "username",
     token: "auth-token",
+    decodedToken: "auth-token-decoded",
     expiry: "auth-token-expiry",
     refreshToken: "refresh-token",
     refreshExpiry: "refresh-token-expiry",

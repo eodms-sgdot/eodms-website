@@ -6,6 +6,7 @@ import axios from 'axios';
 import { AppContext } from '../AppContext';
 import { getInitials } from '../utils/RenderingUtils';
 import { getUserProfile, handleUserProfileError, readUserProfile, updateUserProfile, type UserAddressRequest, type UserProfileFields } from '../services/AAAService';
+import { useTokenDecoding } from '../hooks/useTokenDecoding';
 import { USER_PROFILE_ENABLED } from '../config/userProfile.config';
 import type { TranslationKey } from '../i18n';
 import { getAxiosErrorDetails } from '../utils/HttpErrorDetails';
@@ -62,7 +63,8 @@ const formatAddress = (profile: UserProfileFields, t: (key: TranslationKey) => s
 
 /** @param footerStart Optional action shown at the left of the button row (e.g. Terms of Use). */
 export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }) {
-  const { username, usersEndpoint, getValidAuthToken, setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setIsAuthOpen, setAuthErrorMessage, t } = useContext(AppContext)!;
+  const { username, usersEndpoint, getValidAuthToken, setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setIsAuthOpen, setAuthErrorMessage, t, authToken } = useContext(AppContext)!;
+  const { groups } = useTokenDecoding(authToken);
   const [saved, setSaved] = useState<UserProfileFields | null>(null);
   const [draft, setDraft] = useState<UserProfileFields>({});
   const [loading, setLoading] = useState(true);
@@ -325,6 +327,21 @@ export default function LogoutPanel({ footerStart }: { footerStart?: ReactNode }
         </Box>
       </Collapse>
       </>}
+      {groups.length > 0 && (
+        <>
+          <Divider sx={{ my: 1.5 }} />
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="overline" color="text.secondary">{t('groupMembership')}</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+            {groups.map((group) => (
+              <Typography key={group} variant="body2" sx={{ pl: 1 }}>
+                • {group}
+              </Typography>
+            ))}
+          </Box>
+        </>
+      )}
       <Divider sx={{ my: 1.5 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {footerStart}
