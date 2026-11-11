@@ -1122,7 +1122,7 @@ export default function ResultsPanel({
           </TableRow>
         </TableHead>
         <TableBody>
-          {sortedRows.map(({ item, label }) => {
+          {sortedRows.map(({ item, label }, index) => {
             const isSelected = selectedFootprints.has(item.id);
             const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
@@ -1133,7 +1133,7 @@ export default function ResultsPanel({
 
             return (
               <TableRow
-                key={item.id}
+                key={JSON.stringify([item.collection, item.id, index])}
                 id={`result-row-${item.id}`}
                 {...resultActivationHandlers(item, onZoom)}
                 aria-label={`${t("zoomHover")} - ${label}`}
@@ -1353,7 +1353,7 @@ export default function ResultsPanel({
         ) : view === "table" ? (
           renderTable()
         ) : (
-          results.map(item => {
+          results.map((item, index) => {
             const isSelected = selectedFootprints.has(item.id);
             const itemColor = isSelected ? highlightColor : brandColor;
             const isHovered = item.id === hoveredItem;
@@ -1366,7 +1366,7 @@ export default function ResultsPanel({
 
             return (
               <Card
-                key={item.id}
+                key={JSON.stringify([item.collection, item.id, index])}
                 id={`result-card-${item.id}`}
                 {...resultActivationHandlers(item, onZoom)}
                 aria-label={`${t("zoomHover")} - ${orderKey ?? item.id}`}

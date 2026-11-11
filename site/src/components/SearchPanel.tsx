@@ -15,6 +15,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import NaplWelcome from './NaplWelcome';
 import { getCollectionTags } from '../utils/CollectionTags';
+import { isCollectionSelected, toggleCollectionSelection } from '../utils/CollectionSelection';
 
 /**
  * Properties for the SearchPanel component.
@@ -208,10 +209,7 @@ export default function SearchPanel({
           setCollections(keepIfSame(collections));
           onCollectionsLoaded?.(collections);
           setSelectedCollections(previous => {
-            const updated = previous.flatMap(selected => {
-              const current = collections.find(collection => collection.id === selected.id);
-              return current ? [current] : [];
-            });
+            const updated = collections.filter(collection => isCollectionSelected(previous, collection));
             return updated;
           });
         }
@@ -274,13 +272,13 @@ export default function SearchPanel({
    */
   const toggleCollection = ((collection: STACCollection) => {
     // Without item-search only one collection can be queried, so selecting replaces the selection.
-    if(!supportsSearch && !selectedCollections.includes(collection)) {
+    if(!supportsSearch && !isCollectionSelected(selectedCollections, collection)) {
       setFilters({ [collection.id]: [] });
       setSelectedCollections([collection]);
       return;
     }
 
-    if(selectedCollections.includes(collection)) {
+    if(isCollectionSelected(selectedCollections, collection)) {
       const updated = {...filters};
       delete updated[collection.id];
       setFilters(updated);
@@ -292,7 +290,7 @@ export default function SearchPanel({
       countFilters();
     }
 
-    setSelectedCollections(prev => prev.includes(collection) ? prev.filter(x => x !== collection) : [...prev, collection])
+    setSelectedCollections(prev => toggleCollectionSelection(prev, collection, supportsSearch))
   });
 
   return (
@@ -398,7 +396,7 @@ export default function SearchPanel({
                   control={
                     <Checkbox
                       size="small"
-                      checked={selectedCollections.includes(c)}
+                      checked={isCollectionSelected(selectedCollections, c)}
                       onChange={() => toggleCollection(c)}
                     />
                   }

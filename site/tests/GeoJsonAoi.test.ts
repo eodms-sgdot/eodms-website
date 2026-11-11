@@ -13,6 +13,14 @@ test('accepts a geometry or Feature and serializes the polygon rather than its b
   assert.equal(buildAoiSpatialFilter(result), 'S_INTERSECTS(geometry, POLYGON ((-76 45, -75 45, -75 46, -76 46, -76 45)))');
 });
 
+test('preserves a drawn triangular AOI instead of expanding it to a bounding rectangle', () => {
+  const triangle = { type: 'Polygon', coordinates: [[[-76, 45], [-75, 45], [-75.5, 46], [-76, 45]]] };
+  const drawnFeature = { type: 'Feature', properties: {}, geometry: triangle };
+  const result = parseGeoJsonAoi(JSON.stringify(drawnFeature));
+  assert.deepEqual(result, triangle);
+  assert.equal(buildAoiSpatialFilter(result), 'S_INTERSECTS(geometry, POLYGON ((-76 45, -75 45, -75.5 46, -76 45)))');
+});
+
 test('preserves holes, combines polygon features, and drops altitude', () => {
   const hole = [[-75.8, 45.2], [-75.8, 45.8], [-75.2, 45.8], [-75.2, 45.2], [-75.8, 45.2]];
   const withHole = { ...geometry, coordinates: [...geometry.coordinates, hole] };

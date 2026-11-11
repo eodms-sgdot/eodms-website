@@ -118,7 +118,12 @@ function DateField({ label, value, onChange, error, describedBy }: PartialDateFi
 
     return (
         <Box>
-            <Typography {...labelProps} component="span" variant="body2">{label}</Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 1 }}>
+                <Typography {...labelProps} component="span" variant="body2">{label}</Typography>
+                <FormHelperText component="span" id={helpId} sx={{ m: 0 }}>
+                    {precision ? t(precisionKey) : t('dateOpenEndpoint')}
+                </FormHelperText>
+            </Box>
             <Box sx={{
                 display: 'flex', alignItems: 'center', border: '1px solid',
                 borderColor: error ? 'error.main' : 'divider', borderRadius: 1, mt: 0.5, minHeight: 40,
@@ -155,9 +160,6 @@ function DateField({ label, value, onChange, error, describedBy }: PartialDateFi
                         onChange(writeDateParts({ ...parts, year: date.year, month: date.month, day: date.day }));
                     }} />
             </Box>
-            <FormHelperText id={helpId} sx={{ m: 0, mt: 0.5 }}>
-                {precision ? t(precisionKey) : t('dateOpenEndpoint')}
-            </FormHelperText>
         </Box>
     );
 }

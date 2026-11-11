@@ -40,11 +40,9 @@ export const buildNaplThumbnailAvailableFilter = (
 export const buildGeometryValidityFilter = (
   queryablesByCollection: Array<Record<string, STACQueryable>>,
 ): string => {
-  const supportingCollections = queryablesByCollection.filter(hasGeometryValidityQueryable).length;
-
-  if (supportingCollections === 0) return "";
-  if (supportingCollections === queryablesByCollection.length) return "geometry_valid = TRUE";
-  return "(geometry_valid = TRUE OR geometry_valid IS NULL)";
+  return queryablesByCollection.length > 0 && queryablesByCollection.every(hasGeometryValidityQueryable)
+    ? "geometry_valid = TRUE"
+    : "";
 };
 
 export const isFilterAllowedByQueryables = (

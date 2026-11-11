@@ -1,4 +1,4 @@
-import { Alert, AlertTitle, Box, FormControl, FormHelperText, InputLabel, MenuItem, Select, type SelectChangeEvent } from "@mui/material"
+import { Alert, Box, FormControl, FormHelperText, InputLabel, MenuItem, Select, type SelectChangeEvent } from "@mui/material"
 import { useContext, useId } from "react";
 import { AppContext } from "../../AppContext";
 import PartialDateField from "./PartialDateField";
@@ -131,7 +131,6 @@ const DatePicker: React.FC<DatePickerProps> = ({
                         '& .MuiAlert-message': { minWidth: 0, py: 0 },
                         '& .MuiAlert-icon': { fontSize: 18, mr: 0.75, py: 0 },
                     }}>
-                        <AlertTitle sx={{ fontSize: '0.75rem', lineHeight: 1.4, mb: 0.25 }}>{t('dateSearchTips')}</AlertTitle>
                         <Box>{t('dateBriefHelp')}</Box>
                         <Box component="details" sx={{ mt: 0.5 }}>
                             <Box component="summary" sx={{ cursor: 'pointer' }}>{t('dateEntryHelp')}</Box>

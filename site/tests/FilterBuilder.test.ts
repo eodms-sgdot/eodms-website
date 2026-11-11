@@ -51,11 +51,32 @@ test('adds the fixed geometry-validity constraint only when advertised', () => {
     assert.equal(buildGeometryValidityFilter([{ other: { type: 'boolean' } }]), '');
 });
 
-test('allows collections without geometry_valid in a multi-collection search', () => {
+test('omits geometry_valid if any searched collection does not advertise it', () => {
     assert.equal(buildGeometryValidityFilter([
         { geometry_valid: { type: 'boolean' } },
         { platform: { type: 'string' } },
-    ]), '(geometry_valid = TRUE OR geometry_valid IS NULL)');
+    ]), '');
+    assert.equal(buildGeometryValidityFilter([
+        { platform: { type: 'string' } },
+        { geometry_valid: { type: 'boolean' } },
+    ]), '');
+    assert.equal(buildGeometryValidityFilter([
+        { geometry_valid: { type: 'boolean' } },
+        {},
+    ]), '');
+});
+
+test('adds geometry_valid only when every searched collection advertises a boolean queryable', () => {
+    assert.equal(buildGeometryValidityFilter([
+        { geometry_valid: { type: 'boolean' } },
+        { geometry_valid: { type: ['boolean', 'null'] } },
+    ]), 'geometry_valid = TRUE');
+    assert.equal(buildGeometryValidityFilter([
+        { geometry_valid: { type: 'boolean' } },
+        { geometry_valid: { type: 'string' } },
+    ]), '');
+    assert.equal(buildGeometryValidityFilter([{}, {}]), '');
+    assert.equal(buildGeometryValidityFilter([]), '');
 });
 
 test('builds the NAPL thumbnail-availability filter from its editable boolean choice', () => {

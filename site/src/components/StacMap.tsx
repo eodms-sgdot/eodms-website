@@ -356,12 +356,16 @@ function DrawControl({ onOpenCoordinateEntry, coordinateEntryLabel, drawnItemsRe
     
     const onDrawCreated = (e: L.LeafletEvent) => {
       const event = e as DrawCreatedEvent;
-      console.log(event);
-      drawnItems.clearLayers(); 
-      drawnItems.addLayer(event.layer);
-      const b = event.layer.getBounds();
-      const bboxString = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
-      setBbox(bboxString);
+      try {
+        const geometry = parseGeoJsonAoi(JSON.stringify(event.layer.toGeoJSON()));
+        const bounds = event.layer.getBounds();
+        drawnItems.clearLayers();
+        drawnItems.addLayer(event.layer);
+        onAoiImported(geometry, [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+        setAoiError(null);
+      } catch (error) {
+        setAoiError(t(error instanceof AoiImportError ? error.translationKey : 'aoiInvalidPolygon'));
+      }
     };
     
     const onDrawDeleted = (e: L.LeafletEvent) => {

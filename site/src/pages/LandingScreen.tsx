@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useRef, useCallback } from 'react';
+import { useState, useContext, useEffect, useLayoutEffect, useEffectEvent, useRef, useCallback } from 'react';
 import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -290,6 +290,46 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const [pageSize, setPageSize] = useState(searchLimit);
   const [discovered, setDiscovered] = useState({ count: 0, hasMore: false });
 
+  const clearSearchResults = () => {
+    setSearchResults([]);
+    setLoadedResults([]);
+    setProcessingCandidateId(null);
+    setSelectedFootprints(new Set());
+    setActiveThumbnails({});
+    setFocusedItem(null);
+    setHoveredItem(null);
+    setNumberMatched(null);
+    setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
+    setDiscovered({ count: 0, hasMore: false });
+  };
+
+  const searchCriteriaKey = JSON.stringify({
+    stacEndpoint,
+    collections: fixedCollectionId ? [fixedCollectionId] : selectedCollections.map(collection => collection.id),
+    searchLimit,
+    sortby,
+    searchTemporal,
+    startDate: searchTemporal === 'custom' ? searchStartDate : undefined,
+    endDate: searchTemporal === 'custom' ? searchEndDate : undefined,
+    bbox,
+    aoiGeometry,
+    filters,
+  });
+  const currentSearchCriteria = useRef(searchCriteriaKey);
+  const onSearchCriteriaChanged = useEffectEvent(() => {
+    searchRequestId.current += 1;
+    searchService.cancel();
+    searchService.reset();
+    setIsSearching(false);
+    setSearchError(null);
+    clearSearchResults();
+  });
+  useLayoutEffect(() => {
+    if (currentSearchCriteria.current === searchCriteriaKey) return;
+    currentSearchCriteria.current = searchCriteriaKey;
+    onSearchCriteriaChanged();
+  }, [searchCriteriaKey]);
+
   /**
    * Creates the applicable headers needed for the STAC API request. 
    * 
@@ -442,18 +482,9 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     searchRequestId.current += 1;
     searchService.cancel();
     setIsSearching(false);
-    setSearchResults([]);
-    setLoadedResults([]);
-    setProcessingCandidateId(null);
-    setSelectedFootprints(new Set());
-    setActiveThumbnails({});
-    setFocusedItem(null);
+    clearSearchResults();
     setClearAoiTrigger(prev => prev + 1); // increment to trigger AOI clear effect. 
     replaceBboxAoi(null);
-    console.log(pagingState);
-    setPagingState({ hasNext: false, hasPrevious: false, currentPage: 1, totalDiscoveredPages: 1 });
-    setNumberMatched(null);
-    setDiscovered({ count: 0, hasMore: false });
     searchService.reset();
   }; 
 
@@ -597,34 +628,25 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   };
 
   const handleSearch = async (searchBbox?: [number, number, number, number], zoomToResults = true, searchGeometry?: AoiGeometry, overrideCollections?: STACCollection[], overrideTemporal?: string) => {
-    let prepared;
-    try {
-      prepared = await prepareSearch(searchBbox, searchGeometry, overrideCollections, overrideTemporal);
-    } catch (error) {
-      setSearchError(error instanceof DateSearchError || error instanceof AoiImportError ? t(error.translationKey) : t('errorFetch'));
-      return;
-    }
-    if (!prepared) {
-      setSearchError(t('errorSelectCollection'));
-      return;
-    }
-    const { params, geometryValidityCollectionIds } = prepared;
-    geometryValidityCollections.current = new Set(geometryValidityCollectionIds);
-
     const requestId = ++searchRequestId.current;
+    searchService.cancel();
+    searchService.reset();
     setSearchError(null);
-    setSearchResults([]);
-    setLoadedResults([]);
-    setSelectedFootprints(new Set());
-    setActiveThumbnails({});
-    setFocusedItem(null);
-    setDiscovered({ count: 0, hasMore: false });
+    clearSearchResults();
 
     setIsSearching(true);
     setSearchAnimation(previous => previous + 1);
     showRightPanel(true);
 
     try {
+      const prepared = await prepareSearch(searchBbox, searchGeometry, overrideCollections, overrideTemporal);
+      if (requestId !== searchRequestId.current) return;
+      if (!prepared) {
+        setSearchError(t('errorSelectCollection'));
+        return;
+      }
+      const { params, geometryValidityCollectionIds } = prepared;
+      geometryValidityCollections.current = new Set(geometryValidityCollectionIds);
       const headers = await getHeaders();
       if (requestId !== searchRequestId.current) return;
       const result = await searchService.search(params, headers);
@@ -635,7 +657,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     } catch (e) {
       if (requestId !== searchRequestId.current) return;
       if (axios.isCancel(e)) return;
-      setSearchError(t('errorFetch'));
+      setSearchError(e instanceof DateSearchError || e instanceof AoiImportError ? t(e.translationKey) : t('errorFetch'));
       setSearchResults([]);
     } finally {
       if (requestId === searchRequestId.current) setIsSearching(false);
@@ -693,6 +715,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   }, [allCollections, aoiGeometry, authToken, stacEndpoint, t, getValidAuthToken]);
 
   const getCurrentSearchUrl = async () => {
+    const criteria = currentSearchCriteria.current;
     let prepared;
     try {
       prepared = await prepareSearch(getCurrentSearchBbox(), aoiGeometry ?? undefined);
@@ -700,7 +723,9 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
       throw new Error(error instanceof DateSearchError || error instanceof AoiImportError ? t(error.translationKey) : t('errorFetch'), { cause: error });
     }
     if (!prepared) throw new Error(t('errorSelectCollection'));
-    return searchService.getSearchUrl(prepared.params);
+    const url = await searchService.getSearchUrl(prepared.params);
+    if (criteria !== currentSearchCriteria.current) throw new Error(t('searchCriteriaChanged'));
+    return url;
   };
 
   const [openBlind, setOpenBlind] = useState<'orders' | 'preferences' | 'processing' | null>(null);

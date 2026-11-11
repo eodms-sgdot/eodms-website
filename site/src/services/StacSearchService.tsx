@@ -1,14 +1,7 @@
 import axios from "axios";
 import type { STACItem } from "../types";
-
-export interface StacSearchParams {
-  bbox?: [number, number, number, number];
-  collections: string[];
-  limit: number;
-  datetime?: string;
-  filter?: string;
-  sortby?: string;
-}
+import { buildStacSearchUrl, type StacSearchParams } from "../utils/StacSearchUrl";
+export type { StacSearchParams } from "../utils/StacSearchUrl";
 
 export interface StacSearchResult {
   items: STACItem[];
@@ -81,59 +74,6 @@ export class StacSearchService {
   }
 
   /**
-   * Builds the initial search URL from the given parameters.
-   */
-  private buildSearchUrl(params: StacSearchParams): string {
-    const queryParams = new URLSearchParams();
-    queryParams.append("collections", params.collections.join(","));
-    if (params.bbox) {
-      queryParams.append("bbox", params.bbox.join(","));
-    }
-    queryParams.append("limit", params.limit.toString());
-
-    if (params.datetime) {
-      queryParams.append("datetime", params.datetime);
-    }
-
-    if (params.filter) {
-      queryParams.append("filter-lang", "cql2-text");
-      queryParams.append("filter", params.filter);
-    }
-
-    if (params.sortby && this.supportsSorting) {
-      queryParams.append("sortby", params.sortby);
-    }
-
-    return `${this.stacEndpoint}/search?${queryParams.toString()}`;
-  }
-
-  /**
-   * Builds the initial items URL from the given parameters.
-   */
-  private buildItemsUrl(params: StacSearchParams): string {
-    const queryParams = new URLSearchParams();
-    if (params.bbox) {
-      queryParams.append("bbox", params.bbox.join(","));
-    }
-    queryParams.append("limit", params.limit.toString());
-
-    if (params.datetime) {
-      queryParams.append("datetime", params.datetime);
-    }
-
-    if (params.filter) {
-      queryParams.append("filter-lang", "cql2-text");
-      queryParams.append("filter", params.filter);
-    }
-
-    if (params.sortby && this.supportsSorting) {
-      queryParams.append("sortby", params.sortby);
-    }
-
-    return `${this.stacEndpoint}/collections/${params.collections[0]}/items?${queryParams.toString()}`;
-  }
-
-  /**
    * Executes a GET request against the given URL and returns the result.
    */
   private async fetch(
@@ -175,7 +115,7 @@ export class StacSearchService {
   async getSearchUrl(params: StacSearchParams): Promise<string> {
     await this._sortingSupportPromise;
     await this._searchSupportPromise;
-    const url = this.supportsSearch ? this.buildSearchUrl(params) : this.buildItemsUrl(params);
+    const url = buildStacSearchUrl(this.stacEndpoint, params, this.supportsSearch, this.supportsSorting);
     return new URL(url, window.location.href).href;
   }
 
