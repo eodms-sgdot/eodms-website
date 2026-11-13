@@ -1,10 +1,14 @@
 //import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
+import { eodmsExperience, naplExperience } from './experiences'
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')!;
+const experience = root.dataset.experience === 'napl' ? naplExperience : eodmsExperience;
+
+createRoot(root).render(
   //<StrictMode >
-    <App />
+    <App experience={experience} />
   //</StrictMode>
   ,
 )

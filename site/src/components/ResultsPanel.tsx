@@ -1558,7 +1558,12 @@ export default function ResultsPanel({
 
       <Dialog open={naplDialogOpen} onClose={() => !naplSubmitting && setNaplDialogOpen(false)} maxWidth="md" fullWidth
         slotProps={{ paper: { sx: { maxWidth: 640 } } }}>
-        <DialogTitle>{t("naplValise")}</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+          {t("naplValise")}
+          <IconButton aria-label={t("close")} disabled={naplSubmitting} onClick={() => setNaplDialogOpen(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent dividers sx={{ display: "grid", gap: 3, py: 3, px: { xs: 2, sm: 3 } }}>
           {naplError && (
             <Alert severity="error" action={naplError.details && <CopyErrorDetailsButton details={naplError.details} />}>

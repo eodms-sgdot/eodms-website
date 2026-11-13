@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Routes, Route, Navigate, HashRouter, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AppContext } from './AppContext';
 import { darkMode, lightMode, type DisplayMode } from './theme';
@@ -14,7 +14,7 @@ import { isStagingEndpoint } from './utils/StagingUtils';
 import { useOrderPolling } from './hooks/useOrderPolling';
 import { isRefreshRequired, isRefreshTokenExpired, refreshAuthenticationToken } from './services/AAAService';
 import { decodeJWTPayload } from './utils/JWTUtils';
-import { eodmsExperience, naplExperience } from './experiences';
+import type { ExplorerExperience } from './experiences';
 import axios from 'axios';
 
 // Refresh this long before the access token expires so in-flight requests don't carry a stale token.
@@ -69,20 +69,25 @@ function getInitialStacEndpoint(fallback: string): string {
   return fallback;
 }
 
-function DocumentTitle({ language }: { language: Language }) {
-  const location = useLocation();
-
+function DocumentTitle({ language, experience }: { language: Language; experience: ExplorerExperience }) {
   useEffect(() => {
-    const isNapl = location.pathname === '/napl';
-    document.title = isNapl
+    document.title = experience.id === 'napl'
       ? import.meta.env.VITE_NAPL_APP_TITLE || getTranslation(language, 'naplTitle')
       : import.meta.env.VITE_APP_TITLE || getTranslation(language, 'appTitle');
-  }, [language, location.pathname]);
+  }, [experience.id, language]);
 
   return null;
 }
 
-export default function App() {
+function RedirectToDefaultEntry() {
+  useEffect(() => {
+    window.location.replace(new URL('./index.html', window.location.href).toString());
+  }, []);
+
+  return null;
+}
+
+export default function App({ experience }: { experience: ExplorerExperience }) {
   const initialEndpoint = import.meta.env.VITE_DEFAULT_STAC_URL || '/search';
   const authEndpoint = import.meta.env.DEV
     ? '/aaa/v1/login'
@@ -113,6 +118,7 @@ export default function App() {
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(fields.username));
   const [stacEndpoint, setStacEndpoint] = useState(() => getInitialStacEndpoint(initialEndpoint));
   const showStagingBadge = isStagingEndpoint(stacEndpoint, import.meta.env.DEV, import.meta.env.VITE_EODMS_ENDPOINTS);
+  const canAccessNapl = showStagingBadge || import.meta.env.DEV || import.meta.env.VITE_EODMS_ENDPOINTS.targetEnvironment === 'production';
   const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem(fields.token));
   const [_decodedToken, _setDecodedToken] = useState<string | null>(() => localStorage.getItem(fields.decodedToken));
   const [authExpiry, setAuthExpiry] = useState<string | null>(() => localStorage.getItem(fields.expiry));
@@ -335,13 +341,12 @@ export default function App() {
       <ThemeProvider theme={displayMode === "light" ? lightMode : displayMode === "dark" ? darkMode : lightMode}>
         <CssBaseline />
         <HashRouter>
-          <DocumentTitle language={language} />
+          <DocumentTitle language={language} experience={experience} />
           <Routes>
-            <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
+            <Route path="/" element={experience.id === 'napl' && !canAccessNapl
+              ? <RedirectToDefaultEntry />
+              : <LandingScreen experience={experience} />} />
             <Route path="/tour" element={<Navigate to="/?tour=start" replace />} />
-            <Route path="/napl" element={showStagingBadge || import.meta.env.DEV || import.meta.env.VITE_EODMS_ENDPOINTS.targetEnvironment === 'production'
-              ? <LandingScreen experience={naplExperience} />
-              : <Navigate to="/" replace />} />
             <Route path="/animations" element={<AnimationsScreen />} />
             {import.meta.env.DEV && <Route path="/date-prototype" element={<DateFieldPrototype />} />}
             <Route path="*" element={<Navigate to="/" />} />

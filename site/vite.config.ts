@@ -9,6 +9,7 @@ const buildId = process.env.VITE_BUILD_ID || new Date().toISOString().replace(/[
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const appTitle = env.VITE_APP_TITLE || translations.en.appTitle;
+  const naplAppTitle = env.VITE_NAPL_APP_TITLE || translations.en.naplTitle;
   const targetEnvironment = (env.EODMS_TARGET_ENV || (mode === "development" ? "staging" : "production")).toLowerCase();
   if (!["staging", "production", "proxy"].includes(targetEnvironment)) {
     throw new Error("EODMS_TARGET_ENV must be staging, production, or proxy");
@@ -47,7 +48,9 @@ export default defineConfig(({ mode }) => {
       {
         name: "html-app-title",
         transformIndexHtml(html) {
-          return html.replace("%APP_TITLE%", appTitle);
+          return html
+            .replace("%APP_TITLE%", appTitle)
+            .replace("%NAPL_APP_TITLE%", naplAppTitle);
         },
       },
     ],
@@ -55,6 +58,14 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
       "import.meta.env.VITE_BUILD_ID": JSON.stringify(buildId),
       "import.meta.env.VITE_EODMS_ENDPOINTS": JSON.stringify(endpointMap),
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          index: "index.html",
+          napl: "napl-pna.html",
+        },
+      },
     },
     server: {
       host: true,
@@ -75,7 +86,7 @@ export default defineConfig(({ mode }) => {
           target: eodmsDomain,
           changeOrigin: true,
         },
-        "/napl": {
+        "/napl/": {
           target: eodmsDomain,
           changeOrigin: true,
         },

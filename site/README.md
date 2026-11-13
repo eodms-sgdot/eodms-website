@@ -45,12 +45,18 @@ copy .env.example .env.local
 processing requests. Change it to `production` to switch those routes to the
 production domain. Set it to `proxy` with `EODMS_PROXY_PORT` to route all four
 through one local port-forwarded endpoint that serves the same API paths.
-`/napl` uses the same configured upstream: staging, production, or the shared
-proxy endpoint. Restart Vite and the local API proxy after changing the setting.
+The local NAPL API proxy (`/napl/...`) uses the same configured upstream:
+staging, production, or the shared proxy endpoint. Restart Vite and the local
+API proxy after changing the setting.
 Local environment files are ignored by Git; update `.env.example` when adding
 configuration variables. Built deployments use the relative `/napl/v1` URL and
 are routed by their hosting environment; they do not need the local Vite proxy
 or domain variables.
+
+The NAPL experience is served from `napl-pna.html`; the normal app remains at
+`index.html`. One `npm run build` emits both HTML entry points and their shared
+assets in `dist`, so deployments can continue publishing the build output as a
+single unit. The NAPL page uses the same app bundle and deployment configuration.
 
 After login or token refresh, local storage's `auth-token-aaa-source` records
 the AAA URL and environment reported by the local AAA proxy. Restart the proxy
