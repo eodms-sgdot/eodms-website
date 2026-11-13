@@ -61,7 +61,7 @@ const readResponse = async (response: Response, method: string): Promise<Record<
       payload = JSON.parse(responseText);
     } catch {
       fail(response.ok
-        ? "NAPL order service returned a non-JSON response. Check the staging proxy configuration."
+        ? "NAPL order service returned a non-JSON response. Check the configured proxy target."
         : `NAPL order service returned HTTP ${response.status}.`);
     }
   }
@@ -96,7 +96,7 @@ export async function getNaplOrderOptions(): Promise<NaplOrderOptions> {
     media_type_options: {},
   };
   if (!result.media_types.length || !result.file_formats.length || !result.image_resolutions.length) {
-    throw new Error("NAPL order service returned no selectable order options. Check that the staging service is available.");
+    throw new Error("NAPL order service returned no selectable order options. Check that the configured service is available.");
   }
   for (const mediaType of result.media_types) {
     if (options.media_type_options === undefined) {

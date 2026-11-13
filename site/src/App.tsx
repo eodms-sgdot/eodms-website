@@ -31,7 +31,7 @@ function clearUnrefreshableSession() {
   if (!authToken) return;
   const username = localStorage.getItem(fields.username)?.trim();
   if (!username) {
-     [fields.username, fields.token, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+     [fields.username, fields.token, fields.authSource, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
       .forEach((key) => localStorage.removeItem(key));
     return;
   }
@@ -40,7 +40,7 @@ function clearUnrefreshableSession() {
   if (refreshToken && refreshExpiry && !isRefreshTokenExpired(refreshExpiry)) return;
   if (!isRefreshRequired(localStorage.getItem(fields.expiry)) && !refreshToken) return;
 
-   [fields.username, fields.token, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
+   [fields.username, fields.token, fields.authSource, fields.decodedToken, fields.expiry, fields.refreshToken, fields.refreshExpiry]
     .forEach((key) => localStorage.removeItem(key));
 }
 clearUnrefreshableSession();
@@ -274,6 +274,7 @@ export default function App() {
     // Authentication
     updateSession(fields.username, username);
     updateSession(fields.token, authToken);
+    if (!authToken) localStorage.removeItem(fields.authSource);
     updateSession(fields.expiry, authExpiry);
     updateSession(fields.refreshToken, refreshToken);
     updateSession(fields.refreshExpiry, refreshExpiry);
@@ -338,7 +339,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingScreen experience={eodmsExperience} />} />
             <Route path="/tour" element={<Navigate to="/?tour=start" replace />} />
-            <Route path="/napl" element={showStagingBadge || import.meta.env.DEV
+            <Route path="/napl" element={showStagingBadge || import.meta.env.DEV || import.meta.env.VITE_EODMS_ENDPOINTS.targetEnvironment === 'production'
               ? <LandingScreen experience={naplExperience} />
               : <Navigate to="/" replace />} />
             <Route path="/animations" element={<AnimationsScreen />} />

@@ -45,17 +45,23 @@ copy .env.example .env.local
 processing requests. Change it to `production` to switch those routes to the
 production domain. Set it to `proxy` with `EODMS_PROXY_PORT` to route all four
 through one local port-forwarded endpoint that serves the same API paths.
-`/napl` always targets staging. Restart Vite and the local API proxy after
-changing the setting. Local environment files are ignored by
-Git; update `.env.example` when adding configuration variables. Staging builds
-and deployments use the relative `/napl/v1` URL directly and do not need the
-local proxy or domain variables.
+`/napl` uses the same configured upstream: staging, production, or the shared
+proxy endpoint. Restart Vite and the local API proxy after changing the setting.
+Local environment files are ignored by Git; update `.env.example` when adding
+configuration variables. Built deployments use the relative `/napl/v1` URL and
+are routed by their hosting environment; they do not need the local Vite proxy
+or domain variables.
 
-The NAPL experience is available whenever the app shows the `STAGING` badge, and
-always on the local Vite development server (including `EODMS_TARGET_ENV=production`).
+After login or token refresh, local storage's `auth-token-aaa-source` records
+the AAA URL and environment reported by the local AAA proxy. Restart the proxy
+to enable reporting; older sessions have no source until the next successful
+login or refresh. For deployed sites the URL is the browser-facing AAA endpoint
+and the upstream environment is unknown unless separately verified.
+
+The NAPL experience is available whenever the app shows the `STAGING` badge,
+always on the local Vite development server, and on production-target builds.
 The staging check is determined at runtime from the active STAC endpoint, so the
-same build can be deployed to staging and production. On production deployments,
-`/napl` redirects to the main experience.
+same build can be deployed to staging and production.
 
 The app automatically shows the `PROXY` badge when running through the local
 Vite development server. No environment setting is needed.

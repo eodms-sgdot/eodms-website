@@ -19,9 +19,25 @@ export const fields = {
 
     username: "username",
     token: "auth-token",
+    authSource: "auth-token-aaa-source",
     decodedToken: "auth-token-decoded",
     expiry: "auth-token-expiry",
     refreshToken: "refresh-token",
     refreshExpiry: "refresh-token-expiry",
     collectionsCache: "collections-cache",
+}
+
+export function recordAuthSource(
+    storage: Pick<Storage, 'setItem'>,
+    endpointUrl: string,
+    proxyUpstream: unknown,
+    proxyEnvironment: unknown,
+    usesLocalProxy: boolean,
+) {
+    const url = usesLocalProxy
+        ? typeof proxyUpstream === 'string' && proxyUpstream ? proxyUpstream : null
+        : endpointUrl;
+    const environment = usesLocalProxy && typeof proxyEnvironment === 'string' && proxyEnvironment
+        ? proxyEnvironment : null;
+    storage.setItem(fields.authSource, JSON.stringify({ url, environment }));
 }

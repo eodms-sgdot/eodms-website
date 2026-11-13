@@ -75,12 +75,10 @@ export default defineConfig(({ mode }) => {
           target: eodmsDomain,
           changeOrigin: true,
         },
-        ...(stagingDomain ? {
-          "/napl": {
-            target: stagingDomain,
-            changeOrigin: true,
-          },
-        } : {}),
+        "/napl": {
+          target: eodmsDomain,
+          changeOrigin: true,
+        },
       },
     },
   };

@@ -42,6 +42,11 @@ const app = express()
 
 app.use(express.json())
 
+const setAuthSourceHeaders = (res, endpoint) => {
+    res.set('X-EODMS-AAA-URL', `${aaaDomain}${endpoint}`)
+    res.set('X-EODMS-AAA-Environment', targetEnvironment)
+}
+
 /*
  * POST - /aaa/v1/login - Redirects a login POST request to the AAA service.
  */
@@ -52,6 +57,7 @@ app.post('/aaa/v1/login', (req, res) => {
         `${aaaDomain}/aaa/v1/login`,
         req.body
     ).then(response => {
+        setAuthSourceHeaders(res, '/aaa/v1/login')
         res.send(response.data) // return the entire response body
     }).catch(error => {
         // pass along partial data, as axios error also contains payload
@@ -72,6 +78,7 @@ app.get('/aaa/v1/refresh', (req, res) => {
             headers: { Authorization: req.headers['authorization'] },
         }
     ).then(response => {
+        setAuthSourceHeaders(res, '/aaa/v1/refresh')
         res.send(response.data) // return the entire response body
     }).catch(error => {
         // pass along partial data, as axios error also contains payload

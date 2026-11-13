@@ -229,7 +229,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     `${t("endpointSearch")}: /search/* -> ${endpointMap.eodmsDomain}/search/*`,
     `${t("endpointDDS")}: /dds/* -> ${endpointMap.eodmsDomain}/dds/*`,
     `${t("endpointProcessing")}: /processing/* -> ${endpointMap.eodmsDomain}/processing/*`,
-    `${t("endpointNapl")}: /napl/v1/* -> ${endpointMap.stagingDomain}/napl/v1/*`,
+    `${t("endpointNapl")}: /napl/v1/* -> ${endpointMap.eodmsDomain}/napl/v1/*`,
   ].join("\n");
 
   /**

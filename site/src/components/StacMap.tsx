@@ -1033,8 +1033,9 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
         );
       })}
 
-      {focusedItem && searchResults.map(item => {
-        if (item.id !== focusedItem || !item.geometry) return null;
+      {focusedItem && (() => {
+        const item = searchResults.find(result => result.id === focusedItem);
+        if (!item?.geometry) return null;
         const position = getRepresentativePosition(item);
         if (!position) return null;
 
@@ -1054,7 +1055,7 @@ function ProjectedStacMap({ onLocationSelected, zoomBounds, onZoomToResults, sea
         }
 
         return <Marker key={`focused-item-${item.id}`} position={position} icon={icon} interactive={false} zIndexOffset={1000} />;
-      })}
+      })()}
 
       {Object.entries(activeThumbnails).map(([id, url]) => {
         const item = searchResults.find(s => s.id === id);

@@ -1,6 +1,7 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, type AxiosResponse } from 'axios';
 import type { aaaRequest, aaaResponse } from '../types';
 import type { TranslationKey } from '../i18n';
+import { recordAuthSource } from '../session';
 
 /** Profile fields the AAA users API accepts in a PATCH, matching the EODMS CLI. */
 export interface UserProfileFields {
@@ -56,6 +57,15 @@ export const updateUserProfile = async (usersEndpoint: string, username: string,
 
 const pick = (source: unknown, ...path: string[]) => path.reduce<unknown>((value, key) =>
     value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, source);
+
+const rememberAuthSource = (response: AxiosResponse<aaaResponse>, endpoint: string) => {
+    const requestUrl = new URL(endpoint, window.location.href);
+    const usesLocalProxy = import.meta.env.DEV && requestUrl.origin === window.location.origin;
+    const responseUrl = response.request instanceof XMLHttpRequest && response.request.responseURL
+        ? response.request.responseURL : requestUrl.href;
+    recordAuthSource(localStorage, responseUrl, response.headers['x-eodms-aaa-url'],
+        response.headers['x-eodms-aaa-environment'], usesLocalProxy);
+};
 
 // Non-text values (e.g. a structured address) come back undefined so they are left alone.
 const text = (value: unknown) => typeof value === 'string' ? value : value == null ? '' : undefined;
@@ -129,7 +139,9 @@ export const getAuthenticationToken = async(authEndpoint:string, username:string
          withCredentials: true,
     }  
 
-    return (await axios.post(authEndpoint, requestBody, {withCredentials: true})).data;
+    const response = await axios.post<aaaResponse>(authEndpoint, requestBody, {withCredentials: true});
+    rememberAuthSource(response, authEndpoint);
+    return response.data;
 }
 
 /**
@@ -141,7 +153,9 @@ export const getAuthenticationToken = async(authEndpoint:string, username:string
  */
 export const refreshAuthenticationToken = async(refreshEndpoint:string, refreshToken:string): Promise<aaaResponse> => {
     const headers: Record<string, string> = { 'Authorization': `Bearer ${refreshToken}` };
-    return (await axios.get(refreshEndpoint, { headers, withCredentials: true })).data;
+    const response = await axios.get<aaaResponse>(refreshEndpoint, { headers, withCredentials: true });
+    rememberAuthSource(response, refreshEndpoint);
+    return response.data;
 }
 
 /**
