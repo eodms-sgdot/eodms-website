@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar, Chip, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Box, Typography, Checkbox, FormGroup, Divider, Select, MenuItem, FormControl, InputLabel, CircularProgress, Button, IconButton, Tooltip, Badge, Alert, Snackbar, Chip, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import axios from 'axios';
 import { AppContext } from '../AppContext';
 import type { STACCollection } from '../types'; 
@@ -13,6 +13,7 @@ import { isTemporalFilterField } from '../utils/FilterBuilder';
 import Blind from './Blind';
 import SearchIcon from '@mui/icons-material/Search';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import NaplWelcome from './NaplWelcome';
 import { getCollectionTags } from '../utils/CollectionTags';
 import { isCollectionSelected, toggleCollectionSelection } from '../utils/CollectionSelection';
@@ -134,6 +135,7 @@ export default function SearchPanel({
   const timelineScale = useMemo(() => getCollectionTimelineScale(collections), [collections]);
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [collectionInfoId, setCollectionInfoId] = useState<string | null>(null);
   const [copyNotice, setCopyNotice] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   const [collectionsError, setCollectionsError] = useState<{ key: TranslationKey; status?: number } | null>(null);
   const {
@@ -383,70 +385,93 @@ export default function SearchPanel({
               const tags = getCollectionTags(c);
               const dateRange = getCollectionDateRange(c, t);
               const timelineSegments = timelineScale ? getCollectionTimelineSegments(c, timelineScale) : [];
-              return <Tooltip key={c.id} title={c.description || c.title || c.id}>
-                <FormControlLabel
-                  sx={{
-                    alignItems: 'flex-start',
-                    width: '100%',
-                    minWidth: 0,
-                    mr: 0,
-                    '& .MuiFormControlLabel-label': { minWidth: 0, flex: '1 1 auto' },
-                    '& .MuiCheckbox-root': { pt: '2px' },
-                  }}
-                  control={
+              const isInfoOpen = collectionInfoId === c.id;
+              const collectionName = c.title || c.id;
+              const checkboxId = `collection-checkbox-${encodeURIComponent(c.id)}`;
+              return (
+                <Box key={c.id} sx={{ width: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}>
                     <Checkbox
+                      id={checkboxId}
                       size="small"
                       checked={isCollectionSelected(selectedCollections, c)}
                       onChange={() => toggleCollection(c)}
+                      sx={{ pt: '2px', mr: 1 }}
                     />
-                  }
-                  label={
-                    <Box sx={{ width: '100%', minWidth: 0, py: 0.25 }}>
-                      <Typography component="span" variant="body2" title={c.title || c.id} sx={{ display: 'block' }}>
-                        {c.title || c.id}
-                      </Typography>
-                      {(timelineSegments.length > 0 || dateRange || tags.length > 0) && (
+                    <Box sx={{ flex: '1 1 auto', minWidth: 0, py: 0.25 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                        <Typography component="label" htmlFor={checkboxId} variant="body2" sx={{ minWidth: 0 }}>
+                          {collectionName}
+                        </Typography>
+                      </Box>
+                      {(timelineSegments.length > 0 || dateRange || tags.length > 0 || c.description) && (
                         <Box sx={{ mt: 0.35, mb: 0.25 }}>
                           {timelineSegments.length > 0 && (
-                            <Box
-                              role="img"
-                              aria-label={`${c.title || c.id}: ${dateRange}`}
-                              sx={{ position: 'relative', height: 7, borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden', pointerEvents: 'none' }}
-                            >
-                          {timelineSegments.map((segment, index) => (
-                            <Box
-                              key={`${c.id}-temporal-segment-${index}`}
-                              sx={{
-                                position: 'absolute',
-                                left: `${segment.left}%`,
-                                width: `${segment.width}%`,
-                                top: 0,
-                                bottom: 0,
-                                backgroundImage: 'repeating-linear-gradient(135deg, rgba(96,125,139,0.85) 0px, rgba(96,125,139,0.85) 2px, transparent 2px, transparent 5px)',
-                              }}
-                            />
-                          ))}
-                            </Box>
-                          )}
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1, rowGap: 0.5, mt: 0.25 }}>
-                            {dateRange && <Typography variant="caption" sx={{ lineHeight: 1.2, color: 'text.disabled' }}>{dateRange}</Typography>}
-                            {tags.length > 0 && (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, ml: 'auto' }}>
-                                {tags.map(tag => (
-                                  <Chip key={tag} component="span" size="small" variant="outlined"
-                                    label={tag === 'ceosArd' ? 'CEOS-ARD' : tag === 'sar' ? 'SAR' : t(tag === 'aerial' ? 'collectionAerial' : 'collectionOptical')}
-                                    color={tag === 'sar' ? 'info' : tag === 'aerial' ? 'warning' : tag === 'optical' ? 'success' : 'default'}
-                                    sx={{ height: 18, fontSize: '0.625rem', borderRadius: '9px', '& .MuiChip-label': { px: 0.75 } }} />
+                            <Box component="label" htmlFor={checkboxId} sx={{ display: 'block' }}>
+                              <Box
+                                role="img"
+                                aria-label={`${c.title || c.id}: ${dateRange}`}
+                                sx={{ position: 'relative', height: 7, borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden', pointerEvents: 'none' }}
+                              >
+                                {timelineSegments.map((segment, index) => (
+                                  <Box
+                                    key={`${c.id}-temporal-segment-${index}`}
+                                    sx={{
+                                      position: 'absolute',
+                                      left: `${segment.left}%`,
+                                      width: `${segment.width}%`,
+                                      top: 0,
+                                      bottom: 0,
+                                      backgroundImage: 'repeating-linear-gradient(135deg, rgba(96,125,139,0.85) 0px, rgba(96,125,139,0.85) 2px, transparent 2px, transparent 5px)',
+                                    }}
+                                  />
                                 ))}
                               </Box>
+                            </Box>
+                          )}
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 0.5, rowGap: 0.5, mt: 0.25 }}>
+                            <Box component="label" htmlFor={checkboxId} sx={{ display: 'flex', flex: '1 1 auto', minWidth: 0, alignItems: 'center', columnGap: 1 }}>
+                              {dateRange && <Typography variant="caption" sx={{ lineHeight: 1.2, color: 'text.disabled' }}>{dateRange}</Typography>}
+                              {tags.length > 0 && (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 0.5, ml: 'auto' }}>
+                                  {tags.map(tag => (
+                                    <Chip key={tag} component="span" size="small" variant="outlined"
+                                      label={tag === 'ceosArd' ? 'CEOS-ARD' : tag === 'sar' ? 'SAR' : t(tag === 'aerial' ? 'collectionAerial' : 'collectionOptical')}
+                                      color={tag === 'sar' ? 'info' : tag === 'aerial' ? 'warning' : tag === 'optical' ? 'success' : 'default'}
+                                      sx={{ height: 18, fontSize: '0.625rem', borderRadius: '9px', '& .MuiChip-label': { px: 0.75 } }} />
+                                  ))}
+                                </Box>
+                              )}
+                            </Box>
+                            {c.description && (
+                              <IconButton
+                                size="small"
+                                aria-label={`${t(isInfoOpen ? 'hideDetails' : 'showDetails')}: ${collectionName}`}
+                                aria-expanded={isInfoOpen}
+                                aria-controls={`collection-description-${encodeURIComponent(c.id)}`}
+                                onClick={() => setCollectionInfoId(isInfoOpen ? null : c.id)}
+                                sx={{ flexShrink: 0, width: 18, height: 18, p: 0 }}
+                              >
+                                <InfoOutlinedIcon sx={{ fontSize: 14 }} />
+                              </IconButton>
                             )}
                           </Box>
                         </Box>
                       )}
                     </Box>
-                  }
-                />
-              </Tooltip>;
+                  </Box>
+                  {isInfoOpen && c.description && (
+                    <Box
+                      id={`collection-description-${encodeURIComponent(c.id)}`}
+                      sx={{ ml: 5.5, mt: 0.25, mb: 0.5, p: 1, borderRadius: 1, bgcolor: 'action.hover' }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        {c.description}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              );
             })}
           </FormGroup>
         </Box>
