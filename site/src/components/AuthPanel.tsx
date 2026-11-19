@@ -10,22 +10,10 @@ import axios from 'axios';
 import type { aaaResponse} from '../types';
 import type { TranslationKey } from '../i18n';
 import { USER_PROFILE_ENABLED } from '../config/userProfile.config';
-import { getAxiosErrorDetails } from '../utils/HttpErrorDetails';
+import { getAxiosErrorDetails, getHttpErrorMessage } from '../utils/HttpErrorDetails';
 import CopyErrorDetailsButton from './CopyErrorDetailsButton';
 
 type RegistrationStatus = { severity: 'success' | 'error'; message: string; details?: string } | null;
-
-const getRegistrationErrorDetail = (error: unknown): string | undefined => {
-  if (!axios.isAxiosError(error)) return undefined;
-  const data = error.response?.data;
-  if (typeof data === 'string') return /^\d{3}\b/.test(data.trim()) ? undefined : data.trim();
-  if (!data || typeof data !== 'object') return undefined;
-  return ['error', 'detail', 'message']
-    .map(key => (data as Record<string, unknown>)[key])
-    .find((value): value is string => typeof value === 'string' && value.trim().length > 0 && !/^\d{3}\b/.test(value.trim()))
-    ?.trim();
-};
-
 
 export default function AuthPanel({ footerStart }: { footerStart?: ReactNode }) {
   const {authEndpoint, usersEndpoint, language, setUsername, setAuthToken, setAuthExpiry, setRefreshToken, setRefreshExpiry, setIsAuthOpen, authErrorMessage, setAuthErrorMessage, t } = useContext(AppContext)!;
@@ -115,7 +103,7 @@ export default function AuthPanel({ footerStart }: { footerStart?: ReactNode }) 
       setRegistrationStatus({ severity: 'success', message: t('accountCreatedCheckEmail') });
     } catch (error) {
       const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-      const detail = getRegistrationErrorDetail(error);
+      const detail = axios.isAxiosError(error) ? getHttpErrorMessage(error.response?.data) : undefined;
       const fallbackMessage = status === 409
         ? t('accountAlreadyExists')
         : status === 429 ? t('errorTooManyRequests')

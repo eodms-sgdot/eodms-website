@@ -2,6 +2,7 @@ import axios, { AxiosError, type AxiosResponse } from 'axios';
 import type { aaaRequest, aaaResponse } from '../types';
 import type { TranslationKey } from '../i18n';
 import { recordAuthSource } from '../session';
+import { getHttpErrorMessage } from '../utils/HttpErrorDetails';
 
 /** Profile fields the AAA users API accepts in a PATCH, matching the EODMS CLI. */
 export interface UserProfileFields {
@@ -89,6 +90,7 @@ export function readUserProfile(profile: unknown): UserProfileFields {
     const personal = ['personal-information'];
     const name = ['personal-information', 'identification', 'name'];
     const contact = ['personal-information', 'contact-information'];
+    const language = text(pick(profile, 'environment', 'language') ?? pick(profile, ...personal, 'language') ?? pick(profile, 'language'));
     const mainAddress = pick(profile, ...contact, 'address') ?? pick(profile, ...personal, 'address') ?? pick(profile, 'address');
     const legacyAddressArray = Array.isArray(mainAddress) ? mainAddress : [];
     const legacyAddress = (type: 'main' | 'billing' | 'shipping') => legacyAddressArray.find(item =>
@@ -105,7 +107,7 @@ export function readUserProfile(profile: unknown): UserProfileFields {
         shipping_address: readAddressObject(
             pick(profile, ...contact, 'shipping_address') ?? pick(profile, ...personal, 'shipping_address') ?? pick(profile, 'shipping_address') ?? legacyAddress('shipping'),
         ),
-        language: text(pick(profile, 'personal-information', 'language') ?? pick(profile, 'language')),
+        language: language === 'en' ? 'English' : language === 'fr' ? 'French' : language,
     };
 }
 
@@ -118,8 +120,7 @@ export function handleUserProfileError(error: AxiosError): { key: TranslationKey
     const key = (handleAAAError(error) ?? 'profileRequestFailed') as TranslationKey;
     if (!status || status < 400 || status >= 500 || status === 429) return { key };
     const data = error.response?.data;
-    const detail = [pick(data, 'message'), pick(data, 'error'), pick(data, 'detail')]
-        .find((value): value is string => typeof value === 'string' && value.length > 0);
+    const detail = getHttpErrorMessage(data, ['detail', 'details', 'message']);
     return { key, detail };
 }
 

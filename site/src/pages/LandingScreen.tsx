@@ -316,7 +316,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
     filters,
   });
   const currentSearchCriteria = useRef(searchCriteriaKey);
-  const onSearchCriteriaChanged = useEffectEvent(() => {
+  const resetSearch = useEffectEvent(() => {
     searchRequestId.current += 1;
     searchService.cancel();
     searchService.reset();
@@ -327,8 +327,18 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   useLayoutEffect(() => {
     if (currentSearchCriteria.current === searchCriteriaKey) return;
     currentSearchCriteria.current = searchCriteriaKey;
-    onSearchCriteriaChanged();
+    resetSearch();
   }, [searchCriteriaKey]);
+
+  const searchSessionUser = username && authToken ? username : null;
+  const previousSearchSessionUser = useRef(searchSessionUser);
+  useLayoutEffect(() => {
+    const previous = previousSearchSessionUser.current;
+    previousSearchSessionUser.current = searchSessionUser;
+    if (experience.id === 'napl' && previous && previous !== searchSessionUser) {
+      resetSearch();
+    }
+  }, [experience.id, searchSessionUser]);
 
   /**
    * Creates the applicable headers needed for the STAC API request. 

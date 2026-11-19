@@ -20,6 +20,26 @@ const formatBody = (body: unknown): string => {
   }
 };
 
+/** Returns the most informative message from a structured HTTP error response. */
+export function getHttpErrorMessage(
+  data: unknown,
+  fields: readonly string[] = ['message', 'detail', 'details', 'error'],
+): string | undefined {
+  if (typeof data === 'string') {
+    const message = data.trim();
+    return message && !/^\d{3}\b/.test(message) ? message : undefined;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+
+  const body = data as Record<string, unknown>;
+  return fields
+    .map(key => body[key])
+    .find((value): value is string =>
+      typeof value === 'string' && value.trim().length > 0 && !/^\d{3}\b/.test(value.trim()),
+    )
+    ?.trim();
+}
+
 /** Copy-pasteable summary of a failed HTTP exchange. Request headers and bodies are never included. */
 export function formatHttpErrorDetails({ method, url, status, statusText, body, failure }: HttpExchange): string {
   return [

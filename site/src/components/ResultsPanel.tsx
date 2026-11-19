@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useContext, type MouseEvent, type KeyboardEvent } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, useContext, type MouseEvent, type KeyboardEvent } from "react";
 import {
   Box,
   Typography,
@@ -394,6 +394,28 @@ export default function ResultsPanel({
     }
     setNaplTargetItemsState(entries);
   };
+  const naplSessionUser = userId && authToken ? userId : null;
+  const naplSession = useRef({ user: naplSessionUser, version: 0 });
+  const resetNaplSession = useEffectEvent(() => {
+    setNaplTargetItems([]);
+    setNaplDialogOpen(false);
+    setNaplConfirmation(null);
+    setNaplNotice(null);
+    setNaplError(null);
+    setCartError(null);
+    setNaplOptionsLoading(false);
+    setNaplSubmitting(false);
+    onClearCart();
+  });
+  useLayoutEffect(() => {
+    const previous = naplSession.current;
+    naplSession.current = { user: naplSessionUser, version: previous.version + 1 };
+    if (isNaplExperience && (!naplSessionUser || (previous.user && previous.user !== naplSessionUser))) {
+      resetNaplSession();
+    }
+    return () => { naplSession.current.version += 1; };
+  }, [isNaplExperience, naplSessionUser]);
+
   const needsLogin = (item: STACItem) => !!item.assets.product && !(item.assets.product.href && !item.assets.product["auth:refs"]);
   const cartLoginBlocked = isNaplExperience
     ? (!userId || !authToken) && cartItems.some(item => !item.assets.product || needsLogin(item))
@@ -411,6 +433,7 @@ export default function ResultsPanel({
 
   const openNaplOrder = async (items: STACItem[]) => {
     if (naplSubmitting || naplOptionsLoading) return;
+    const sessionVersion = naplSession.current.version;
     if (naplTargetItems.length + items.length > 100) {
       setNaplError(t("naplOrderLimit"));
       setNaplDialogOpen(true);
@@ -422,6 +445,7 @@ export default function ResultsPanel({
     setNaplOptionsLoading(true);
     try {
       const options = await getNaplOrderOptions();
+      if (sessionVersion !== naplSession.current.version) return;
       setNaplOptions(options);
       const entries = items.map(item => ({
         id: crypto.randomUUID(),
@@ -437,9 +461,9 @@ export default function ResultsPanel({
         ...entries,
       ]);
     } catch (error) {
-      reportNaplError(error, t("naplOptionsUnavailable"));
+      if (sessionVersion === naplSession.current.version) reportNaplError(error, t("naplOptionsUnavailable"));
     } finally {
-      setNaplOptionsLoading(false);
+      if (sessionVersion === naplSession.current.version) setNaplOptionsLoading(false);
     }
   };
 
@@ -464,14 +488,18 @@ export default function ResultsPanel({
 
   const handleNaplSubmit = async () => {
     if (!naplSelectionValid || !authToken || naplSubmitting) return;
+    const sessionVersion = naplSession.current.version;
     setNaplSubmitting(true);
     setNaplError(null);
     try {
+      const token = await getValidAuthToken();
+      if (sessionVersion !== naplSession.current.version) return;
       const response = await submitNaplOrder(naplTargetItems.map(item => ({
         unique_identifier: item.itemId,
         quantity: item.quantity,
         options: naplItemOptions[item.id],
-      })), await getValidAuthToken());
+      })), token);
+      if (sessionVersion !== naplSession.current.version) return;
       const displayOrderId = response.order_number ?? response.order_id;
       const orderId = displayOrderId !== undefined ? ` (${displayOrderId})` : "";
       setNaplConfirmation({
@@ -488,9 +516,9 @@ export default function ResultsPanel({
       setNaplTargetItems([]);
       if (naplTargetItems.some(item => selectedFootprints.has(item.itemId))) onClearCart();
     } catch (error) {
-      reportNaplError(error, t("errorOrderSubmitFailed"));
+      if (sessionVersion === naplSession.current.version) reportNaplError(error, t("errorOrderSubmitFailed"));
     } finally {
-      setNaplSubmitting(false);
+      if (sessionVersion === naplSession.current.version) setNaplSubmitting(false);
     }
   };
 

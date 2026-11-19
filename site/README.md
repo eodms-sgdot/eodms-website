@@ -176,6 +176,10 @@ dates. EN/FR and light/dark buttons use existing application preferences.
 ## NAPL Orders
 
 The NAPL basket stores separate order lines, including repeated catalog UUIDs.
+Logging out or ending the authenticated session clears the saved basket,
+search results, selections, and result overlays, and cancels pending searches.
+Basket contents survive reloads while signed in,
+but are not carried over to another account.
 Each line has independent media type, file format, resolution, and positive
 integer quantity. Existing saved basket entries default to quantity 1. Duplicate
 and remove controls operate on line IDs, not catalog UUIDs. Quantities persist
@@ -208,6 +212,11 @@ Their implementation is preserved behind `VITE_ENABLE_USER_PROFILE=true`.
 Only enable it once the AAA users API is ready. This is a build-time setting:
 restart Vite for development, or rebuild and redeploy for production.
 Login, token refresh, and logout are unaffected.
+
+Like the EODMS CLI, registration uses `POST /aaa/v1/users`, and profile
+retrieval and updates use `GET` and `PATCH /aaa/v1/users/{username}` with a
+Bearer access token. Profile language codes returned as `en` or `fr` are
+displayed and submitted as `English` or `French`.
 
 Build the frontend with:
 
