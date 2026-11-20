@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ProcessingService, type ProcessingJob } from '../services/ProcessingService';
+import { preferMoreAdvancedProcessingJob } from '../utils/ProcessingJobCapacity';
 
 const POLL_INTERVAL_MS = 30_000;
 const isPending = (job: ProcessingJob) => job.status === 'accepted' || job.status === 'running';
-const statusRank = (job: ProcessingJob) => job.status === 'accepted' ? 0 : job.status === 'running' ? 1 : 2;
 const jobsKey = (username: string) => `processing_jobs_${username}`;
 const hiddenKey = (username: string) => `processing_hidden_${username}`;
 const retryKey = (username: string) => `processing_retry_${username}`;
@@ -70,7 +70,7 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
           jobs: [
             ...current.filter(job => !hidden.has(job.jobID)).map(job => {
               const known = knownJobs.find(existing => existing.jobID === job.jobID);
-              return known && statusRank(known) > statusRank(job) ? known : job;
+              return known ? preferMoreAdvancedProcessingJob(known, job) : job;
             }),
             ...knownJobs.filter(job => !hidden.has(job.jobID) && !current.some(listed => listed.jobID === job.jobID)),
           ],
@@ -97,7 +97,7 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
         if (previous.username !== username || !previous.jobs) return previous;
         const existing = previous.jobs.find(job => job.jobID === jobID);
         if (!existing) return previous;
-        const next = statusRank(existing) > statusRank(refreshed) ? existing : refreshed;
+        const next = preferMoreAdvancedProcessingJob(existing, refreshed);
         return {
           username,
           jobs: previous.jobs.map(job => job.jobID === jobID ? next : job),
@@ -182,7 +182,10 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
         if (byId.size) {
           setState(previous => previous.username === username && previous.jobs ? {
             username,
-            jobs: previous.jobs.map(job => byId.get(job.jobID) ?? job),
+            jobs: previous.jobs.map(job => {
+              const refreshed = byId.get(job.jobID);
+              return refreshed ? preferMoreAdvancedProcessingJob(job, refreshed) : job;
+            }),
           } : previous);
           if (byId.size === pending.length) setError('');
         }

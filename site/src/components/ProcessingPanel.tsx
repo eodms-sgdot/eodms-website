@@ -4,6 +4,7 @@ import { alpha } from '@mui/material/styles';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
+import SettingsIcon from '@mui/icons-material/Settings';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
@@ -14,6 +15,7 @@ import type { STACItem } from '../types';
 import { getProcessingAssets, ProcessingService, type JobResult, type ProcessingJob, type ProcessingSubmission, type ProcessDescription, type ProcessSummary } from '../services/ProcessingService';
 import { formatStacDateAsLocalInput } from '../utils/DateUtils';
 import { isProcessingItem } from '../utils/ProcessingCollection';
+import { isEchoProcess } from '../utils/ProcessingProcess';
 import { getAvailableProcessingJobSlots, getProcessingSubmissionCount, MAX_ACTIVE_PROCESSING_JOBS } from '../utils/ProcessingJobCapacity';
 import { formatProcessingInputBlocks, getProcessingInputsForCandidate } from '../utils/ProcessingInputs';
 
@@ -104,7 +106,10 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
     let active = true;
     service.getProcesses()
       .then(available => {
-        if (active) { setProcesses(available); setError(''); }
+        if (active) {
+          setProcesses(available.filter(process => !isEchoProcess(process)));
+          setError('');
+        }
       })
       .catch(cause => { if (active) setError(messageFor(cause)); });
     return () => { active = false; };
@@ -232,6 +237,15 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
         {!jobsLoaded && !jobsError && <Alert severity="info">{t('processingJobsLoading')}</Alert>}
         {jobsLoaded && candidates.length > 0 && availableJobSlots === 0 && <Alert severity="info">{t('processingJobCapacityReached')}</Alert>}
+        <Box sx={{
+          display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 1,
+          px: 1.5, py: 1, bgcolor: theme => alpha(theme.palette.primary.main, 0.08),
+          border: 1, borderColor: 'divider', borderRadius: 1,
+        }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <SettingsIcon fontSize="small" color="primary" aria-hidden="true" />
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{t('processingChooseProcessor')}</Typography>
+        </Box>
         <FormControl ref={processorSelectRef} fullWidth variant="outlined" size="small">
           <InputLabel shrink id="processing-processor-label">{t('processingProcessor')}</InputLabel>
           <Select labelId="processing-processor-label" label={t('processingProcessor')} size="small" displayEmpty value={selected}
@@ -267,33 +281,39 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
           </Link>
           <Collapse in={showInputSchema} unmountOnExit>
             <Box id="processing-description-json" sx={{ minWidth: 0, p: 1, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
-              <Box component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>
+            <Box component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: '"Cascadia Code", monospace', fontSize: 12 }}>
                 {JSON.stringify(description.inputs, null, 2)}
               </Box>
             </Box>
           </Collapse>
         </>}
+        </Box>
         <Box sx={{ px: 1.5, py: 1, bgcolor: theme => alpha(theme.palette.primary.main, 0.08), borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <ShoppingCartIcon fontSize="small" color="primary" />
             <Typography variant="body2" sx={{ flex: 1, fontWeight: 700 }}>{cartLabel}</Typography>
           </Box>
+          {(candidates.length > 0 || description) && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            {t('processingLimitedCollections')}
+          </Typography>}
+          {inputCandidates.length > 0 && <>
+            <Link component="button" type="button" variant="body2" sx={{ display: 'block', textAlign: 'left', mt: 0.5 }}
+              aria-expanded={showInputBlocks} aria-controls="processing-input-json"
+              onClick={() => setShowInputBlocks(open => !open)}>
+              {t('processingInput')}
+            </Link>
+            <Collapse in={showInputBlocks} unmountOnExit>
+              <TextField id="processing-input-json" multiline minRows={3} maxRows={10} size="small" fullWidth
+                helperText={t('processingInputHelp')} value={inputs}
+                slotProps={{
+                  input: { sx: { fontFamily: '"Cascadia Code", monospace', fontSize: 12 } },
+                  htmlInput: { 'aria-label': t('processingInput') },
+                }}
+                onChange={event => setEditedInputs({ contextKey: inputContextKey, value: event.target.value })} />
+            </Collapse>
+          </>}
           {candidates.length === 0 && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{t('processingSelectCandidate')}</Typography>}
         </Box>
-        {(candidates.length > 0 || description) && <Alert severity="info">{t('processingLimitedCollections')}</Alert>}
-        {inputCandidates.length > 0 && <>
-          <Link component="button" type="button" variant="body2" sx={{ justifySelf: 'start', textAlign: 'left' }}
-            aria-expanded={showInputBlocks} aria-controls="processing-input-json"
-            onClick={() => setShowInputBlocks(open => !open)}>
-            {t('processingInput')}
-          </Link>
-          <Collapse in={showInputBlocks} unmountOnExit>
-            <TextField id="processing-input-json" multiline minRows={3} maxRows={10} size="small" fullWidth
-              label={t('processingInput')} helperText={t('processingInputHelp')} value={inputs}
-              slotProps={{ input: { sx: { fontFamily: '"Cascadia Code", monospace', fontSize: 12 } } }}
-              onChange={event => setEditedInputs({ contextKey: inputContextKey, value: event.target.value })} />
-          </Collapse>
-        </>}
         {description && <>
           <Button variant="contained" color={processingJobsMaxedOut ? 'error' : 'primary'}
             sx={processingJobsMaxedOut ? {
