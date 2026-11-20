@@ -155,7 +155,7 @@ const FRENCH_TOUR_STEPS: Record<'eodms' | 'napl', Record<string, TourStepTransla
   },
   napl: {
     welcome: {
-      title: 'Découvrez plus de 100 ans de photos de la BNA',
+      title: 'Découvrez plus de 100 ans de photos de la PNA',
       description: 'La Bibliothèque nationale de photos aériennes du Canada conserve plus d’un siècle de photographies aériennes. Explorez des vues historiques des paysages, des villes et de l’aménagement du territoire au Canada.',
     },
     collections: {

@@ -363,13 +363,14 @@ export default function InteractiveTour({
             >
               <Box
                 component="img"
-                src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/rcm-river.jpg`}
+                src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/A28409_318.png`}
                 alt={t('tourNaplImageAlt')}
                 onLoad={(event) => { event.currentTarget.style.animationPlayState = 'running'; }}
                 sx={{
                   display: 'block',
                   width: '100%',
                   height: '100%',
+                  objectFit: 'cover',
                   animation: 'tourImageFade 400ms ease-out both paused',
                   '@keyframes tourImageFade': {
                     from: { opacity: 0 },

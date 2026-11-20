@@ -1,5 +1,4 @@
 import { Box, Typography } from '@mui/material';
-import heroImage from '../assets/hero.png';
 import { AppContext } from '../AppContext';
 import { useContext } from 'react';
 import NaplContactInfo from './NaplContactInfo';
@@ -12,8 +11,8 @@ export default function NaplWelcome() {
       <Box sx={{ position: 'relative', height: 190, overflow: 'hidden', bgcolor: '#173f4b' }}>
         <Box
           component="img"
-          src={heroImage}
-          alt="Historical aerial photograph from the National Air Photo Library"
+          src={`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/A28409_318.png`}
+          alt="Archival black-and-white aerial photograph of a city"
           sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
         <Box
@@ -24,7 +23,7 @@ export default function NaplWelcome() {
             flexDirection: 'column',
             justifyContent: 'flex-end',
             p: 2,
-            bgcolor: 'rgba(10, 35, 42, 0.48)',
+            background: 'linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.62) 100%)',
             color: 'common.white',
           }}
         >
