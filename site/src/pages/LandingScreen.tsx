@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useLayoutEffect, useEffectEvent, useRef, useCallback } from 'react';
+import { useState, useContext, useEffect, useLayoutEffect, useEffectEvent, useRef, useCallback, useMemo } from 'react';
 import { Avatar, Box, Divider, Drawer, Fab, IconButton, AppBar, Toolbar, Typography, Button, Tooltip, Snackbar, Alert, Badge, Chip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -23,6 +23,7 @@ import { useTour } from '../hooks/useTour';
 import { getTourSteps } from '../config/tourSteps.config';
 import type { STACCollection, STACItem } from '../types';
 import { createDateRange } from '../utils/DateUtils';
+import { isProcessingItem } from '../utils/ProcessingCollection';
 import { customDateRange, DateSearchError } from '../utils/PartialDates';
 import { buildFilter } from '../utils/FilterBuilder';
 import { buildGeometryValidityFilter, buildNaplThumbnailAvailableFilter, hasGeometryValidityQueryable } from '../utils/QueryableFilterUtils';
@@ -102,10 +103,9 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const [isResizingResults, setIsResizingResults] = useState(false);
   const [searchResults, setSearchResults] = useState<STACItem[]>([]);
   const [loadedResults, setLoadedResults] = useState<STACItem[]>([]);
-  const [processingCandidateId, setProcessingCandidateId] = useState<string | null>(null);
   const [processingReceipt, setProcessingReceipt] = useState<{ username: string; submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null>(null);
   const [submissionToastOpen, setSubmissionToastOpen] = useState(false);
-  const { jobs: processingJobs, error: processingJobsError, refreshJobs, refreshJob, registerJob, retryJob, retryableJobIDs, jobDetailsByID, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
+  const { jobs: processingJobs, jobsLoaded: processingJobsLoaded, error: processingJobsError, refreshJobs, refreshJob, registerJob, retryJob, retryableJobIDs, jobDetailsByID, clearProcessingHistory } = useProcessingJobs(experience.id === 'eodms' ? username : null, getValidAuthToken);
   const [numberMatched, setNumberMatched] = useState<number | null>(null);
   const [fixedCollectionId, setFixedCollectionId] = useState(experience.fixedCollectionId);
   const [selectedCollections, setSelectedCollections] = useState<STACCollection[]>(() =>
@@ -293,7 +293,6 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const clearSearchResults = () => {
     setSearchResults([]);
     setLoadedResults([]);
-    setProcessingCandidateId(null);
     setSelectedFootprints(new Set());
     setActiveThumbnails({});
     setFocusedItem(null);
@@ -335,7 +334,7 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   useLayoutEffect(() => {
     const previous = previousSearchSessionUser.current;
     previousSearchSessionUser.current = searchSessionUser;
-    if (experience.id === 'napl' && previous && previous !== searchSessionUser) {
+    if (previous && previous !== searchSessionUser) {
       resetSearch();
     }
   }, [experience.id, searchSessionUser]);
@@ -742,8 +741,8 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
   const isPreferencesOpen = openBlind === 'preferences';
   const isOrdersOpen = openBlind === 'orders';
   const isProcessingOpen = openBlind === 'processing';
-  const processingCandidates = searchResults.filter(item => selectedFootprints.has(item.id) && item.collection === 'Radarsat-1-FRED');
-  const processingCandidate = processingCandidates.find(item => item.id === processingCandidateId) ?? processingCandidates[0] ?? null;
+  const processingCandidates = useMemo(() => searchResults.filter(item => selectedFootprints.has(item.id) && isProcessingItem(item)), [searchResults, selectedFootprints]);
+  const processingCartCount = useMemo(() => searchResults.filter(item => selectedFootprints.has(item.id)).length, [searchResults, selectedFootprints]);
   const toggleBlind = (blind: 'orders' | 'preferences' | 'processing') => {
     setIsAuthOpen(false);
     setOpenBlind(current => current === blind ? null : blind);
@@ -1038,14 +1037,15 @@ export default function LandingScreen({ experience }: LandingScreenProps) {
             open={isOrdersOpen}
             onClose={() => setOpenBlind(null)}
           />}
-          {experience.id === 'eodms' && <ProcessingPanel key={`${username ?? 'guest'}:${processingCandidate?.id ?? 'none'}`} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId, inputs, collection, orderKey) => {
+          {experience.id === 'eodms' && <ProcessingPanel key={username ?? 'guest'} open={isProcessingOpen && !!username} onClose={() => setOpenBlind(null)} onSubmitted={(submission, job, processId, itemId, inputs, collection, orderKey) => {
             setProcessingReceipt(username ? { username, submission, job, processId, itemId } : null);
             setSubmissionToastOpen(true);
             registerJob(job, { processID: processId, inputs, collection, itemId, orderKey });
             void refreshJobs();
-            setSelectedFootprints(new Set());
-            setProcessingCandidateId(null);
-          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsError={processingJobsError} onRefreshJobs={refreshJobs} onRefreshJob={refreshJob} onRetryJob={retryJob} retryableJobIDs={retryableJobIDs} jobDetailsByID={jobDetailsByID} onClearHistory={clearProcessingHistory} candidate={processingCandidate} candidates={processingCandidates} onSelectCandidate={setProcessingCandidateId} />}
+          }} onBatchSubmitted={submittedItemIDs => {
+            const submitted = new Set(submittedItemIDs);
+            setSelectedFootprints(current => new Set([...current].filter(itemID => !submitted.has(itemID))));
+          }} receipt={processingReceipt?.username === username ? processingReceipt : null} jobs={processingJobs} jobsLoaded={processingJobsLoaded} jobsError={processingJobsError} onRefreshJobs={refreshJobs} onRefreshJob={refreshJob} onRetryJob={retryJob} retryableJobIDs={retryableJobIDs} jobDetailsByID={jobDetailsByID} onClearHistory={clearProcessingHistory} candidates={processingCandidates} totalCartCount={processingCartCount} />}
         </Toolbar>
         <SkyBar />
       </AppBar>

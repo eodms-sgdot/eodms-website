@@ -49,6 +49,7 @@ const hiddenJobs = (username: string): Set<string> => {
 export function useProcessingJobs(username: string | null, getValidAuthToken: () => Promise<string>) {
   const service = useMemo(() => new ProcessingService(import.meta.env.VITE_PROCESSING_URL || '/processing', getValidAuthToken), [getValidAuthToken]);
   const activeUsername = useRef(username);
+  const [jobsLoadedUsername, setJobsLoadedUsername] = useState<string | null>(null);
   useLayoutEffect(() => { activeUsername.current = username; }, [username]);
   const [state, setState] = useState<{ username: string | null; jobs: ProcessingJob[] | null }>({ username: null, jobs: null });
   const [error, setError] = useState('');
@@ -75,6 +76,7 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
           ],
         };
       });
+      setJobsLoadedUsername(username);
       setError('');
     } catch (cause) {
       if (activeUsername.current === username) setError(cause instanceof Error ? cause.message : String(cause));
@@ -195,6 +197,7 @@ export function useProcessingJobs(username: string | null, getValidAuthToken: ()
 
   return {
     jobs,
+    jobsLoaded: username !== null && jobsLoadedUsername === username,
     error,
     refreshJobs,
     refreshJob,

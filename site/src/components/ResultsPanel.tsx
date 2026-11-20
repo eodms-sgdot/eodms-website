@@ -43,6 +43,7 @@ import { keyframes } from "@emotion/react";
 import CloseIcon from "@mui/icons-material/Close";
 import ZoomOutMapIcon from "@mui/icons-material/ZoomOutMap";
 import type { STACItem } from "../types";
+import { isProcessingItem } from "../utils/ProcessingCollection";
 import { AppContext } from "../AppContext";
 import { getHighlightColor } from "../theme";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -1318,9 +1319,9 @@ export default function ResultsPanel({
                   </Button>
                 </span>
               </Tooltip>
-              {!isNaplExperience && <Tooltip title={cartItems.some(item => item.collection === 'Radarsat-1-FRED') ? t('processingCartHover') : t('processingSelectCandidate')}>
+              {!isNaplExperience && <Tooltip title={cartItems.some(isProcessingItem) ? t('processingCartHover') : t('processingSelectCandidate')}>
                 <span>
-                  <Button aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(item => item.collection === 'Radarsat-1-FRED')} onClick={onProcessCart}>
+                  <Button aria-label={t('processingPrepare')} disabled={!userId || !cartItems.some(isProcessingItem)} onClick={onProcessCart}>
                     <ScienceIcon fontSize="small" />
                   </Button>
                 </span>

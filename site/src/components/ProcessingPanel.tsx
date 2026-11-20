@@ -1,10 +1,9 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Collapse, IconButton, Link, MenuItem, Select, Table, TableBody, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Collapse, FormControl, IconButton, InputLabel, Link, MenuItem, Select, Table, TableBody, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
@@ -13,6 +12,10 @@ import AssetDownloadButton, { S3CopyButton } from './AssetDownloadButton';
 import { AppContext } from '../AppContext';
 import type { STACItem } from '../types';
 import { getProcessingAssets, ProcessingService, type JobResult, type ProcessingJob, type ProcessingSubmission, type ProcessDescription, type ProcessSummary } from '../services/ProcessingService';
+import { formatStacDateAsLocalInput } from '../utils/DateUtils';
+import { isProcessingItem } from '../utils/ProcessingCollection';
+import { getAvailableProcessingJobSlots, getProcessingSubmissionCount, MAX_ACTIVE_PROCESSING_JOBS } from '../utils/ProcessingJobCapacity';
+import { formatProcessingInputBlocks, getProcessingInputsForCandidate } from '../utils/ProcessingInputs';
 
 interface ProcessingPanelProps {
   open: boolean;
@@ -20,6 +23,7 @@ interface ProcessingPanelProps {
   onSubmitted: (submission: ProcessingSubmission, job: ProcessingJob | null, processId: string, itemId: string, inputs: Record<string, unknown>, collection: string, orderKey?: string) => void;
   receipt: { submission: ProcessingSubmission; job: ProcessingJob | null; processId: string; itemId: string } | null;
   jobs: ProcessingJob[] | null;
+  jobsLoaded: boolean;
   jobsError: string;
   onRefreshJobs: () => Promise<void>;
   onRefreshJob: (jobID: string) => Promise<void>;
@@ -27,30 +31,9 @@ interface ProcessingPanelProps {
   retryableJobIDs: Set<string>;
   jobDetailsByID: Record<string, { collection?: string; itemId?: string; orderKey?: string }>;
   onClearHistory: (jobID?: string) => void;
-  candidate: STACItem | null;
   candidates: STACItem[];
-  onSelectCandidate: (id: string) => void;
-}
-
-function seedMetadata(candidate: STACItem): Record<string, unknown> {
-  const metadata = candidate.properties;
-  return Object.fromEntries(Object.entries({
-    uuid: typeof metadata.segment_id === 'string' ? metadata.segment_id : candidate.id,
-    start_time: metadata.start_datetime ?? metadata.datetime,
-    end_time: metadata.end_datetime ?? metadata.datetime,
-  }).filter(([, value]) => value != null));
-}
-
-function seedInputs(description: ProcessDescription, candidate: STACItem): Record<string, unknown> {
-  const definitions = description.inputs;
-  if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) return seedMetadata(candidate);
-  const metadata = candidate.properties;
-  const seeds: Record<string, unknown> = { ...seedMetadata(candidate), stop_time: metadata.end_datetime ?? metadata.datetime };
-  return Object.fromEntries(Object.entries(definitions).flatMap(([name, definition]) => {
-    if (seeds[name] != null) return [[name, seeds[name]]];
-    if (definition && typeof definition === 'object' && 'default' in definition) return [[name, definition.default]];
-    return [];
-  }));
+  totalCartCount: number;
+  onBatchSubmitted: (itemIDs: string[]) => void;
 }
 
 function messageFor(cause: unknown): string {
@@ -61,21 +44,49 @@ function messageFor(cause: unknown): string {
     body?.error, body?.request_id && `request_id: ${body.request_id}`].filter(Boolean).join(' - ');
 }
 
-export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsError, onRefreshJobs, onRefreshJob, onRetryJob, retryableJobIDs, jobDetailsByID, onClearHistory, candidate, candidates, onSelectCandidate }: ProcessingPanelProps) {
-  const { username, language, getValidAuthToken, t } = useContext(AppContext)!;
+function formatJobCreatedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return formatStacDateAsLocalInput(date).slice(0, 16).replace('T', ' ');
+}
+
+export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, jobs, jobsLoaded, jobsError, onRefreshJobs, onRefreshJob, onRetryJob, retryableJobIDs, jobDetailsByID, onClearHistory, candidates, totalCartCount, onBatchSubmitted }: ProcessingPanelProps) {
+  const { username, getValidAuthToken, t } = useContext(AppContext)!;
   const service = useMemo(() => new ProcessingService(import.meta.env.VITE_PROCESSING_URL || '/processing', getValidAuthToken), [getValidAuthToken]);
   const [processes, setProcesses] = useState<ProcessSummary[]>([]);
   const [selected, setSelected] = useState('');
+  const [processorMenuWidth, setProcessorMenuWidth] = useState<number>();
+  const processorSelectRef = useRef<HTMLDivElement>(null);
   const [description, setDescription] = useState<ProcessDescription | null>(null);
   const [showInputSchema, setShowInputSchema] = useState(false);
-  const [inputs, setInputs] = useState(() => candidate?.collection === 'Radarsat-1-FRED'
-    ? JSON.stringify(seedMetadata(candidate), null, 2) : '{}');
+  const [showInputBlocks, setShowInputBlocks] = useState(false);
+  const [editedInputs, setEditedInputs] = useState<{ contextKey: string; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [jobResults, setJobResults] = useState<Record<string, JobResult>>({});
   const [refreshingJobIDs, setRefreshingJobIDs] = useState<Set<string>>(() => new Set());
   const [refreshingAllJobs, setRefreshingAllJobs] = useState(false);
   const [retryingJobID, setRetryingJobID] = useState<string | null>(null);
+  const availableJobSlots = jobsLoaded ? getAvailableProcessingJobSlots(jobs, retryingJobID === null ? 0 : 1) : 0;
+  const submissionCount = getProcessingSubmissionCount(candidates.length, availableJobSlots);
+  const inputCandidates = useMemo(() => candidates.slice(0, submissionCount), [candidates, submissionCount]);
+  const inputContextKey = useMemo(() => JSON.stringify([
+    selected,
+    inputCandidates.map(item => item.id),
+    description?.inputs ?? null,
+  ]), [selected, inputCandidates, description?.inputs]);
+  const defaultInputs = useMemo(
+    () => formatProcessingInputBlocks(inputCandidates, description ?? undefined),
+    [inputCandidates, description],
+  );
+  const inputs = editedInputs?.contextKey === inputContextKey ? editedInputs.value : defaultInputs;
+  const cartLabel = t('processingCartCount')
+    .replace('{eligible}', String(inputCandidates.length))
+    .replace('{total}', String(totalCartCount));
+  const activeProcessingJobCount = jobs?.filter(job => job.status === 'accepted' || job.status === 'running').length ?? 0;
+  const processingJobsMaxedOut = jobsLoaded && activeProcessingJobCount >= MAX_ACTIVE_PROCESSING_JOBS;
+  const slotIndicatorColor = !jobsLoaded ? 'text.secondary'
+    : processingJobsMaxedOut ? 'error.main' : 'success.main';
   const loadingResults = useRef(new Set<string>());
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
@@ -105,12 +116,10 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
     service.getProcess(selected)
       .then(details => { if (active) {
         setDescription(details);
-        setInputs(candidate?.collection === 'Radarsat-1-FRED' ? JSON.stringify(seedInputs(details, candidate), null, 2) : '{}');
-        setError('');
       } })
       .catch(cause => { if (active) setError(messageFor(cause)); });
     return () => { active = false; };
-  }, [open, selected, service, candidate]);
+  }, [open, selected, service, candidates]);
 
   useEffect(() => {
     if (!open || !jobs) return;
@@ -157,6 +166,8 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
   };
 
   const retryJob = async (jobID: string) => {
+    if (!jobsLoaded) { setError(t('processingJobsLoading')); return; }
+    if (availableJobSlots === 0 || busy || retryingJobID !== null) { setError(t('processingJobCapacityReached')); return; }
     setRetryingJobID(jobID);
     setError('');
     try {
@@ -166,23 +177,51 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
   };
 
   const execute = async () => {
-    let parsed: unknown;
-    try { parsed = JSON.parse(inputs); } catch { setError(t('processingInvalidInputs')); return; }
-    if (!selected || !description || !candidate || candidate.collection !== 'Radarsat-1-FRED' || parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    let inputBlocks: Record<string, unknown>[];
+    try {
+      const parsedBlocks: unknown[] = inputs.split(/^[ \t]*\.\.\.[ \t]*$/m).map(block => JSON.parse(block));
+      if (parsedBlocks.length !== inputCandidates.length || parsedBlocks.some(value => value === null || typeof value !== 'object' || Array.isArray(value))) {
+        throw new Error('Invalid candidate input blocks');
+      }
+      inputBlocks = parsedBlocks as Record<string, unknown>[];
+    } catch {
+      setError(t('processingInvalidInputs'));
+      return;
+    }
+    if (!selected || !description || inputCandidates.length === 0 || candidates.some(item => !isProcessingItem(item)) || retryingJobID !== null) {
       setError(t('processingInvalidInputs'));
       return;
     }
     setBusy(true);
     setError('');
     try {
-      const response = await service.execute(selected, parsed as Record<string, unknown>);
-      const job = response.result && 'jobID' in response.result ? response.result : null;
-      const locationJobId = response.location?.match(/\/jobs\/([^/?#]+)/)?.[1];
-      onSubmitted(response, job ?? (locationJobId ? {
-        type: 'process', jobID: decodeURIComponent(locationJobId), status: 'accepted', processID: selected,
-      } : null), selected, candidate.id, parsed as Record<string, unknown>, candidate.collection,
-      candidate.properties.order_key == null ? undefined : String(candidate.properties.order_key));
-    } catch (cause) { setError(messageFor(cause)); }
+      const results = await Promise.all(inputCandidates.map(async (item, index) => {
+        const itemInputs = getProcessingInputsForCandidate(description, item, inputBlocks[index]);
+        try {
+          return { status: 'submitted' as const, item, itemInputs, response: await service.execute(selected, itemInputs) };
+        } catch (cause) {
+          return { status: 'failed' as const, item, error: `${item.id}: ${messageFor(cause)}` };
+        }
+      }));
+      const failedItems: string[] = [];
+      const submittedItemIDs: string[] = [];
+      for (const result of results) {
+        if (result.status === 'failed') {
+          failedItems.push(result.error);
+          continue;
+        }
+        const { item, itemInputs, response } = result;
+        const job = response.result && 'jobID' in response.result ? response.result : null;
+        const locationJobId = response.location?.match(/\/jobs\/([^/?#]+)/)?.[1];
+        onSubmitted(response, job ?? (locationJobId ? {
+          type: 'process', jobID: decodeURIComponent(locationJobId), status: 'accepted', processID: selected,
+        } : null), selected, item.id, itemInputs, item.collection,
+        item.properties.order_key == null ? undefined : String(item.properties.order_key));
+        submittedItemIDs.push(item.id);
+      }
+      if (failedItems.length) setError(failedItems.join(' | '));
+      if (submittedItemIDs.length) onBatchSubmitted(submittedItemIDs);
+    }
     finally { setBusy(false); }
   };
 
@@ -191,54 +230,100 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
       <Box sx={{ px: 2, pb: 2, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 1.5 }} data-tour="processing">
         <Typography variant="h6" color="primary">{t('processingTitle')}</Typography>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-        <Typography variant="subtitle1">{t('processingSubmission')}</Typography>
+        {!jobsLoaded && !jobsError && <Alert severity="info">{t('processingJobsLoading')}</Alert>}
+        {jobsLoaded && candidates.length > 0 && availableJobSlots === 0 && <Alert severity="info">{t('processingJobCapacityReached')}</Alert>}
+        <FormControl ref={processorSelectRef} fullWidth variant="outlined" size="small">
+          <InputLabel shrink id="processing-processor-label">{t('processingProcessor')}</InputLabel>
+          <Select labelId="processing-processor-label" label={t('processingProcessor')} size="small" displayEmpty value={selected}
+            MenuProps={{ slotProps: { paper: { sx: { width: processorMenuWidth, maxWidth: processorMenuWidth } } } }}
+            renderValue={value => {
+              if (!value) return t('processingProcess');
+              const process = processes.find(candidate => candidate.id === value);
+              return process?.title || String(value);
+            }}
+            onOpen={() => {
+              const width = processorSelectRef.current?.getBoundingClientRect().width;
+              if (width) setProcessorMenuWidth(width);
+            }}
+            onChange={event => {
+              setSelected(event.target.value); setDescription(null); setShowInputSchema(false); setShowInputBlocks(false); setError('');
+            }}>
+            <MenuItem value="" disabled>{t('processingProcess')}</MenuItem>
+            {processes.map(process => <MenuItem key={process.id} value={process.id} sx={{ alignItems: 'flex-start', whiteSpace: 'normal', py: 1 }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2">{process.title || process.id}</Typography>
+                {process.description && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                  {process.description}
+                </Typography>}
+              </Box>
+            </MenuItem>)}
+          </Select>
+        </FormControl>
+        {description && <>
+          <Link component="button" type="button" variant="body2" sx={{ justifySelf: 'start', textAlign: 'left' }}
+            aria-expanded={showInputSchema} aria-controls="processing-description-json"
+            onClick={() => setShowInputSchema(open => !open)}>
+            {t('processingDescription')}
+          </Link>
+          <Collapse in={showInputSchema} unmountOnExit>
+            <Box id="processing-description-json" sx={{ minWidth: 0, p: 1, border: 1, borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
+              <Box component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>
+                {JSON.stringify(description.inputs, null, 2)}
+              </Box>
+            </Box>
+          </Collapse>
+        </>}
         <Box sx={{ px: 1.5, py: 1, bgcolor: theme => alpha(theme.palette.primary.main, 0.08), borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <ShoppingCartIcon fontSize="small" color="primary" />
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>{t('cart')} ({candidates.length})</Typography>
+            <Typography variant="body2" sx={{ flex: 1, fontWeight: 700 }}>{cartLabel}</Typography>
           </Box>
-          {candidates.length > 1 && <Select size="small" fullWidth value={candidate?.id ?? ''} onChange={event => onSelectCandidate(event.target.value)} inputProps={{ 'aria-label': t('processingCandidate') }} sx={{ mt: 1 }}>
-            {candidates.map(item => <MenuItem key={item.id} value={item.id}>{item.collection} - {item.id}</MenuItem>)}
-          </Select>}
-          {candidate ? <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>{candidate.collection} - {candidate.id}</Typography>
-            : <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{t('processingSelectCandidate')}</Typography>}
+          {candidates.length === 0 && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{t('processingSelectCandidate')}</Typography>}
         </Box>
-        <Select size="small" displayEmpty value={selected} onChange={event => {
-          setSelected(event.target.value); setDescription(null); setShowInputSchema(false);
-        }} inputProps={{ 'aria-label': t('processingProcess') }}>
-          <MenuItem value="" disabled>{t('processingProcess')}</MenuItem>
-          {processes.map(process => <MenuItem key={process.id} value={process.id}>{process.title || process.id}</MenuItem>)}
-        </Select>
-        {description?.description && <Typography variant="body2">{description.description}</Typography>}
-        {(candidate || description) && <>
-          <Alert severity="info">{t('processingLimitedCollections')}</Alert>
-          <Typography variant="subtitle2">{t('processingInputs')}</Typography>
-          {description && <Box sx={{ minWidth: 0, bgcolor: 'action.hover' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0, overflow: 'hidden', px: 1 }}>
-              <Typography variant="caption" component="code" noWrap sx={{ flex: '1 1 0%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace' }}>
-                {JSON.stringify(description.inputs)}
-              </Typography>
-              <Tooltip title={showInputSchema ? t('hideDetails') : t('showDetails')}>
-                <IconButton size="small" sx={{ flexShrink: 0 }} aria-label={`${t('processingInputs')} - ${showInputSchema ? t('hideDetails') : t('showDetails')}`}
-                  aria-expanded={showInputSchema} onClick={() => setShowInputSchema(open => !open)}>
-                  <ExpandMoreIcon fontSize="small" sx={{ transform: showInputSchema ? 'rotate(180deg)' : 'none' }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Collapse in={showInputSchema} unmountOnExit>
-              <Box component="pre" sx={{ m: 0, p: 1, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>
-                {JSON.stringify(description.inputs, null, 2)}
-              </Box>
-            </Collapse>
-          </Box>}
-          <TextField multiline minRows={3} maxRows={10} size="small" label={t('processingInputs')} value={inputs}
-            slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 12 } } }}
-            onChange={event => setInputs(event.target.value)} />
-          <Button variant="contained" disabled={busy || !description || candidate?.collection !== 'Radarsat-1-FRED'} onClick={execute}>{t('processingExecute')}</Button>
+        {(candidates.length > 0 || description) && <Alert severity="info">{t('processingLimitedCollections')}</Alert>}
+        {inputCandidates.length > 0 && <>
+          <Link component="button" type="button" variant="body2" sx={{ justifySelf: 'start', textAlign: 'left' }}
+            aria-expanded={showInputBlocks} aria-controls="processing-input-json"
+            onClick={() => setShowInputBlocks(open => !open)}>
+            {t('processingInput')}
+          </Link>
+          <Collapse in={showInputBlocks} unmountOnExit>
+            <TextField id="processing-input-json" multiline minRows={3} maxRows={10} size="small" fullWidth
+              label={t('processingInput')} helperText={t('processingInputHelp')} value={inputs}
+              slotProps={{ input: { sx: { fontFamily: '"Cascadia Code", monospace', fontSize: 12 } } }}
+              onChange={event => setEditedInputs({ contextKey: inputContextKey, value: event.target.value })} />
+          </Collapse>
+        </>}
+        {description && <>
+          <Button variant="contained" color={processingJobsMaxedOut ? 'error' : 'primary'}
+            sx={processingJobsMaxedOut ? {
+              '&.Mui-disabled': {
+                backgroundColor: 'error.light',
+                color: 'error.dark',
+              },
+            } : undefined}
+            disabled={busy || retryingJobID !== null || !jobsLoaded || !description || candidates.length === 0 || candidates.some(item => !isProcessingItem(item)) || submissionCount === 0}
+            onClick={execute}>
+            {processingJobsMaxedOut
+              ? t('processingExecuteMaxedOut')
+                .replace('{active}', String(activeProcessingJobCount))
+                .replace('{max}', String(MAX_ACTIVE_PROCESSING_JOBS))
+              : t('processingExecute').replace('{count}', String(submissionCount))}
+          </Button>
         </>}
         {busy && <CircularProgress size={20} />}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="subtitle1">{t('processingJobs')}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle1">{t('processingJobs')}</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: slotIndicatorColor }}>
+              <Box aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'currentColor' }} />
+              <Typography variant="caption" sx={{ color: 'inherit', fontWeight: 600 }}>
+                {t('processingJobSlotCount')
+                  .replace('{active}', jobsLoaded ? String(activeProcessingJobCount) : '—')
+                  .replace('{max}', String(MAX_ACTIVE_PROCESSING_JOBS))}
+              </Typography>
+            </Box>
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Tooltip title={t('clearCompletedHistory')}>
               <span><IconButton size="small" aria-label={t('clearCompletedHistory')}
@@ -262,7 +347,11 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
             const httpAssets = getProcessingAssets(jobResults[job.jobID]);
             const s3Assets = getProcessingAssets(jobResults[job.jobID], 's3');
             const itemDetails = jobDetailsByID[job.jobID];
-            const canRetry = retryableJobIDs.has(job.jobID);
+            const hasRetryInputs = retryableJobIDs.has(job.jobID);
+            const canRetry = hasRetryInputs && jobsLoaded && availableJobSlots > 0 && !busy && retryingJobID === null;
+            const retryTooltip = !hasRetryInputs ? 'processingRetryInputsUnavailable'
+              : !jobsLoaded ? 'processingJobsLoading'
+                : canRetry ? 'retryProcessingJob' : 'processingJobCapacityReached';
             return <TableRow key={job.jobID} hover>
             <TableCell sx={{ overflowWrap: 'anywhere', maxWidth: 0, width: '75%' }}>
               <Typography variant="body2">{job.processID || t('processingJobs')}</Typography>
@@ -270,7 +359,7 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
               {itemDetails?.itemId && <Typography variant="body2" color="text.secondary">{t('itemId')}: {itemDetails.itemId}</Typography>}
               {itemDetails?.orderKey && <Typography variant="body2" color="text.secondary">{t('orderKey')}: {itemDetails.orderKey}</Typography>}
               <Typography variant="caption" color="text.secondary">{job.jobID}</Typography>
-              {job.created && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{new Date(job.created).toLocaleString(language)}</Typography>}
+              {job.created && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{formatJobCreatedAt(job.created)}</Typography>}
               <Link component="button" variant="caption" aria-expanded={expandedJob === job.jobID} onClick={() => void inspectJob(job)}>
                 {expandedJob === job.jobID ? t('hideDetails') : t('showDetails')}
               </Link>
@@ -316,9 +405,9 @@ export default function ProcessingPanel({ open, onClose, onSubmitted, receipt, j
                     {refreshingJobIDs.has(job.jobID) ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
                   </IconButton></span>
                 </Tooltip>}
-                {job.status === 'failed' && <Tooltip title={t(canRetry ? 'retryProcessingJob' : 'processingRetryInputsUnavailable')}>
-                  <span><IconButton size="small" color="error" aria-label={`${t(canRetry ? 'retryProcessingJob' : 'processingRetryInputsUnavailable')} - ${job.jobID}`}
-                    disabled={!canRetry || retryingJobID === job.jobID} onClick={() => void retryJob(job.jobID)}>
+                {job.status === 'failed' && <Tooltip title={t(retryTooltip)}>
+                  <span><IconButton size="small" color="error" aria-label={`${t(retryTooltip)} - ${job.jobID}`}
+                    disabled={!canRetry} onClick={() => void retryJob(job.jobID)}>
                     {retryingJobID === job.jobID ? <CircularProgress size={20} /> : <ReplayIcon fontSize="small" />}
                   </IconButton></span>
                 </Tooltip>}
