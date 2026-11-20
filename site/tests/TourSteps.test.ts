@@ -15,5 +15,5 @@ test('French tour steps keep stable references and preserve the EODMS search act
 test('French NAPL steps also keep stable references', () => {
   const steps = getTourSteps('napl', 'fr');
   assert.strictEqual(getTourSteps('napl', 'fr'), steps);
-  assert.equal(steps[4].title, 'Valise - votre sélection');
+  assert.equal(steps[4].title, 'Panier - votre sélection');
 });

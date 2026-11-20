@@ -95,14 +95,14 @@ export const NAPL_TOUR_STEPS: TourStep[] = [
   {
     id: 'results',
     title: 'Photo Results',
-    description: 'Browse aerial photos from Canada\'s history. Click on a photo to see details, add to valise, or order prints.',
+    description: 'Browse aerial photos from Canada\'s history. Click on a photo to see details, add to cart, or order prints.',
     target: '[data-tour="results-panel"]',
     placement: 'right',
   },
   {
-    id: 'valise',
-    title: 'Valise - Your Selection',
-    description: 'Add photos to your valise for bulk ordering. Manage your selections and check out when ready.',
+    id: 'cart',
+    title: 'Cart - Your Selection',
+    description: 'Add photos to your cart for bulk ordering. Manage your selections and check out when ready.',
     target: '[data-tour="cart"]',
     placement: 'right',
   },
@@ -168,11 +168,11 @@ const FRENCH_TOUR_STEPS: Record<'eodms' | 'napl', Record<string, TourStepTransla
     },
     results: {
       title: 'Résultats de photos',
-      description: 'Parcourez des photos aériennes de l’histoire du Canada. Cliquez sur une photo pour consulter ses détails, l’ajouter à votre valise ou commander des tirages.',
+      description: 'Parcourez des photos aériennes de l’histoire du Canada. Cliquez sur une photo pour consulter ses détails, l’ajouter au panier ou commander des tirages.',
     },
-    valise: {
-      title: 'Valise - votre sélection',
-      description: 'Ajoutez des photos à votre valise pour passer une commande groupée. Gérez votre sélection et passez à la caisse lorsque vous êtes prêt.',
+    cart: {
+      title: 'Panier - votre sélection',
+      description: 'Ajoutez des photos à votre panier pour passer une commande groupée. Gérez votre sélection et passez à la caisse lorsque vous êtes prêt.',
     },
     preferences: {
       title: 'Téléchargements, préférences et profil',

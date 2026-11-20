@@ -175,15 +175,15 @@ dates. EN/FR and light/dark buttons use existing application preferences.
 
 ## NAPL Orders
 
-The NAPL basket stores separate order lines, including repeated catalog UUIDs.
-Logging out or ending the authenticated session clears the saved basket,
+The NAPL cart stores separate order lines, including repeated catalog UUIDs.
+Logging out or ending the authenticated session clears the saved cart,
 search results, selections, and result overlays, and cancels pending searches.
-Basket contents survive reloads while signed in,
+Cart contents survive reloads while signed in,
 but are not carried over to another account.
 Each line has independent media type, file format, resolution, and positive
-integer quantity. Existing saved basket entries default to quantity 1. Duplicate
+integer quantity. Existing saved cart entries default to quantity 1. Duplicate
 and remove controls operate on line IDs, not catalog UUIDs. Quantities persist
-with the basket, are sent as `items[].quantity`, and appear in the confirmation
+with the cart, are sent as `items[].quantity`, and appear in the confirmation
 summary. The service counts total units toward its hourly limit. The displayed
 Order ID prefers the API's integer `order_number`, with a UUID fallback for
 older responses.
@@ -200,7 +200,7 @@ previous all-fields behavior until upgraded.
 Each line also has an optional Flight Line Index Map selector: Not requested,
 PDF, or Paper. The selectable formats come from the service's
 `flight_line_index_maps` list; the control is disabled until the service
-advertises this capability. Selections persist in the basket and are copied
+advertises this capability. Selections persist in the cart and are copied
 with duplicated lines. The request carries `items[].options.flight_line_index_map`
 only when selected, using `PDF` or `Paper` even in the French UI. The confirmation
 summary shows each line's choice. Older saved lines have no assumed map format.

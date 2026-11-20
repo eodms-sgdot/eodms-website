@@ -69,7 +69,7 @@ import AssetDownloadButton, { type DownloadableAsset } from "./AssetDownloadButt
 import { getNaplOrderOptions, NaplHttpError, normalizeNaplSelection, submitNaplOrder, type NaplOrderOptions, type NaplOrderSelection } from "../services/NaplOrderService";
 import type { ExplorerExperience } from "../experiences";
 import NaplContactInfo from "./NaplContactInfo";
-import { loadNaplBasket, saveNaplBasket, type NaplBasketEntry } from "../utils/NaplBasket";
+import { loadNaplCart, saveNaplCart, type NaplCartEntry } from "../utils/NaplCart";
 
 const ASSET_ROLE_ORDER = ["data", "metadata", "license"];
 
@@ -347,7 +347,8 @@ export default function ResultsPanel({
   const [cartBusy, setCartBusy] = useState(false);
   const isNaplExperience = experienceId === "napl";
   const [naplOptions, setNaplOptions] = useState<NaplOrderOptions | null>(null);
-  const [naplTargetItems, setNaplTargetItemsState] = useState<NaplBasketEntry[]>(loadNaplBasket);
+  const [naplCartItems, setNaplCartItemsState] = useState<NaplCartEntry[]>(loadNaplCart);
+  const naplCartItemsRef = useRef(naplCartItems);
   const [naplStorageError, setNaplStorageError] = useState(false);
   const [naplDialogOpen, setNaplDialogOpen] = useState(false);
   const [naplOptionsLoading, setNaplOptionsLoading] = useState(false);
@@ -360,7 +361,7 @@ export default function ResultsPanel({
     if (error instanceof NaplHttpError) setNaplError(error.message, error.details);
     else setNaplError(error instanceof Error ? error.message : fallback);
   };
-  const naplItemOptions = Object.fromEntries(naplTargetItems.map(entry => [entry.id, entry.options]));
+  const naplItemOptions = Object.fromEntries(naplCartItems.map(entry => [entry.id, entry.options]));
   const naplMediaLabels: Record<string, string> = {
     PaperPrint: t("naplPaperPrint"),
     Mosaic: t("naplMosaic"),
@@ -368,14 +369,14 @@ export default function ResultsPanel({
     Uncorrected: t("naplUncorrected"),
     TransparencyEnlargement: t("naplTransparencyEnlargement"),
   };
-  const naplPhotoCounts = new Map<string, number>();
-  for (const entry of naplTargetItems) {
-    const count = (naplPhotoCounts.get(entry.itemId) ?? 0) + entry.quantity;
-    naplPhotoCounts.set(entry.itemId, count);
+  const naplCartPhotoCounts = new Map<string, number>();
+  for (const entry of naplCartItems) {
+    const count = (naplCartPhotoCounts.get(entry.itemId) ?? 0) + entry.quantity;
+    naplCartPhotoCounts.set(entry.itemId, count);
   }
-  const renderValiseCount = (itemId: string) => (
-    <Badge badgeContent={naplPhotoCounts.get(itemId) ?? 0} color="secondary" max={100}
-      aria-label={t("naplValiseCount").replace("{count}", String(naplPhotoCounts.get(itemId) ?? 0))}>
+  const renderNaplCartCount = (itemId: string) => (
+    <Badge badgeContent={naplCartPhotoCounts.get(itemId) ?? 0} color="secondary" max={100}
+      aria-label={t("naplCartCount").replace("{count}", String(naplCartPhotoCounts.get(itemId) ?? 0))}>
       <LuggageIcon fontSize="small" />
     </Badge>
   );
@@ -385,20 +386,21 @@ export default function ResultsPanel({
   } | null>(null);
   const [naplNotice, setNaplNotice] = useState<string | null>(null);
   const [cartError, setCartError] = useState<string | null>(null);
-  const setNaplTargetItems = (update: NaplBasketEntry[] | ((previous: NaplBasketEntry[]) => NaplBasketEntry[])) => {
-    const entries = typeof update === "function" ? update(naplTargetItems) : update;
+  const setNaplCartItems = (update: NaplCartEntry[] | ((previous: NaplCartEntry[]) => NaplCartEntry[])) => {
+    const entries = typeof update === "function" ? update(naplCartItemsRef.current) : update;
+    naplCartItemsRef.current = entries;
     try {
-      saveNaplBasket(entries);
+      saveNaplCart(entries);
       setNaplStorageError(false);
     } catch {
       setNaplStorageError(true);
     }
-    setNaplTargetItemsState(entries);
+    setNaplCartItemsState(entries);
   };
   const naplSessionUser = userId && authToken ? userId : null;
   const naplSession = useRef({ user: naplSessionUser, version: 0 });
   const resetNaplSession = useEffectEvent(() => {
-    setNaplTargetItems([]);
+    setNaplCartItems([]);
     setNaplDialogOpen(false);
     setNaplConfirmation(null);
     setNaplNotice(null);
@@ -422,20 +424,83 @@ export default function ResultsPanel({
     ? (!userId || !authToken) && cartItems.some(item => !item.assets.product || needsLogin(item))
     : !userId && cartItems.some(needsLogin);
 
+  const createNaplCartEntry = (item: STACItem): NaplCartEntry => ({
+    id: crypto.randomUUID(),
+    itemId: item.id,
+    quantity: 1,
+    label: getNaplItemLabel(item, {
+      roll: t("naplRollLabel"), photo: t("naplPhotoLabel"), unavailable: t("naplRollPhotoUnavailable"),
+    }),
+    options: naplOptions
+      ? normalizeNaplSelection({ media_type: naplOptions.media_types[0] ?? "" }, naplOptions)
+      : { media_type: "" },
+  });
+
+  const addSelectedItemsToNaplCart = (items: STACItem[]) => {
+    const existingIds = new Set(naplCartItemsRef.current.map(entry => entry.itemId));
+    const additions = items.filter(item => {
+      if (item.assets.product || existingIds.has(item.id)) return false;
+      existingIds.add(item.id);
+      return true;
+    });
+    if (naplCartItemsRef.current.length + additions.length > 100) {
+      setCartError(t("naplOrderLimit"));
+      return false;
+    }
+    if (additions.length > 0) {
+      setNaplCartItems(previous => {
+        const previousIds = new Set(previous.map(entry => entry.itemId));
+        return [
+          ...previous,
+          ...additions.filter(item => !previousIds.has(item.id)).map(createNaplCartEntry),
+        ];
+      });
+    }
+    return true;
+  };
+
   const handleCartToggle = (item: STACItem) => {
     if (isNaplExperience && !selectedFootprints.has(item.id) && cartItems.length > 0
       && !!cartItems[0].assets.product !== !!item.assets.product) {
       setCartError(t("naplCartMixBlocked"));
       return;
     }
+    if (isNaplExperience && !selectedFootprints.has(item.id) && !item.assets.product
+      && userId && authToken && !addSelectedItemsToNaplCart([item])) return;
     setCartError(null);
+    if (isNaplExperience && !selectedFootprints.has(item.id) && !item.assets.product && (!userId || !authToken)) {
+      setCartError(t("loginToOrder"));
+    }
     onToggleFootprint(item);
+  };
+
+  const handlePageSelection = (items: STACItem[], selected: boolean) => {
+    if (!isNaplExperience || !selected) {
+      onSetPageSelection(items, selected);
+      return;
+    }
+
+    const newItems = items.filter(item => !selectedFootprints.has(item.id));
+    const selectedType = cartItems[0] ? !!cartItems[0].assets.product : undefined;
+    const pageType = newItems[0] ? !!newItems[0].assets.product : undefined;
+    if ((selectedType !== undefined && newItems.some(item => !!item.assets.product !== selectedType))
+      || (pageType !== undefined && newItems.some(item => !!item.assets.product !== pageType))) {
+      setCartError(t("naplCartMixBlocked"));
+      return;
+    }
+    if (userId && authToken && !addSelectedItemsToNaplCart(newItems)) return;
+    if (!userId || !authToken) {
+      setCartError(t("loginToOrder"));
+    } else {
+      setCartError(null);
+    }
+    onSetPageSelection(items, selected);
   };
 
   const openNaplOrder = async (items: STACItem[]) => {
     if (naplSubmitting || naplOptionsLoading) return;
     const sessionVersion = naplSession.current.version;
-    if (naplTargetItems.length + items.length > 100) {
+    if (naplCartItems.length + items.length > 100) {
       setNaplError(t("naplOrderLimit"));
       setNaplDialogOpen(true);
       return;
@@ -457,7 +522,7 @@ export default function ResultsPanel({
         }),
         options: normalizeNaplSelection({ media_type: options.media_types[0] ?? "" }, options),
       }));
-      setNaplTargetItems(previous => [
+      setNaplCartItems(previous => [
         ...previous.map(entry => ({ ...entry, options: normalizeNaplSelection(entry.options, options) })),
         ...entries,
       ]);
@@ -468,8 +533,8 @@ export default function ResultsPanel({
     }
   };
 
-  const naplSelectionValid = naplTargetItems.length > 0 && naplTargetItems.length <= 100
-    && naplTargetItems.every(item => {
+  const naplSelectionValid = naplCartItems.length > 0 && naplCartItems.length <= 100
+    && naplCartItems.every(item => {
       const options = naplItemOptions[item.id];
       const rule = naplOptions?.media_type_options[options.media_type];
       return Number.isInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 2147483647
@@ -483,7 +548,7 @@ export default function ResultsPanel({
 
   const updateNaplItemOptions = (id: string, patch: Partial<NaplOrderSelection>) => {
     if (!naplOptions) return;
-    setNaplTargetItems(previous => previous.map(entry => entry.id === id
+    setNaplCartItems(previous => previous.map(entry => entry.id === id
       ? { ...entry, options: normalizeNaplSelection({ ...entry.options, ...patch }, naplOptions) } : entry));
   };
 
@@ -495,7 +560,7 @@ export default function ResultsPanel({
     try {
       const token = await getValidAuthToken();
       if (sessionVersion !== naplSession.current.version) return;
-      const response = await submitNaplOrder(naplTargetItems.map(item => ({
+      const response = await submitNaplOrder(naplCartItems.map(item => ({
         unique_identifier: item.itemId,
         quantity: item.quantity,
         options: naplItemOptions[item.id],
@@ -505,7 +570,7 @@ export default function ResultsPanel({
       const orderId = displayOrderId !== undefined ? ` (${displayOrderId})` : "";
       setNaplConfirmation({
         orderId: displayOrderId !== undefined ? String(displayOrderId) : undefined,
-        items: naplTargetItems.map(item => ({
+        items: naplCartItems.map(item => ({
           id: item.id,
           label: item.label,
           quantity: item.quantity,
@@ -514,8 +579,8 @@ export default function ResultsPanel({
       });
       setNaplNotice(`${t("naplOrderSubmitted")}${orderId}`);
       setNaplDialogOpen(false);
-      setNaplTargetItems([]);
-      if (naplTargetItems.some(item => selectedFootprints.has(item.itemId))) onClearCart();
+      setNaplCartItems([]);
+      if (naplCartItems.some(item => selectedFootprints.has(item.itemId))) onClearCart();
     } catch (error) {
       if (sessionVersion === naplSession.current.version) reportNaplError(error, t("errorOrderSubmitFailed"));
     } finally {
@@ -526,7 +591,7 @@ export default function ResultsPanel({
   /** Applies each item's Prepare download rules: open a ready download, or submit one DDS order per item. */
   const handleCartDownload = async () => {
     if (isNaplExperience && !cartItems[0]?.assets.product) {
-      await openNaplOrder(cartItems);
+      await openNaplOrder([]);
       return;
     }
 
@@ -840,7 +905,7 @@ export default function ResultsPanel({
     const orderKey: string | null = item.properties?.order_key ? String(item.properties.order_key) : null;
     const filesize = associatedOrder ? getFilesizeFromUrl(associatedOrder.downloadUrl ?? null) : '';
     const directAssets = canOrderItem ? [] : getDirectAssets(item);
-    const valiseActionLabel = `${t("naplValiseAdd")} (${t("naplValiseCount").replace("{count}", String(naplPhotoCounts.get(item.id) ?? 0))})`;
+    const naplCartActionLabel = `${t("naplCartAdd")} (${t("naplCartCount").replace("{count}", String(naplCartPhotoCounts.get(item.id) ?? 0))})`;
 
     if (compact) {
       const order = () => handleCreateOrder(item.id, orderKey ?? '', item.collection);
@@ -849,9 +914,9 @@ export default function ResultsPanel({
 
       if (isNaplExperience && !canOrderItem) {
         action = (
-          <Tooltip title={userId && authToken ? valiseActionLabel : t("loginToOrder")}>
-            <span><IconButton size="small" color="primary" disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} aria-label={valiseActionLabel} onClick={() => void openNaplOrder([item])}>
-              {renderValiseCount(item.id)}
+          <Tooltip title={userId && authToken ? naplCartActionLabel : t("loginToOrder")}>
+            <span><IconButton size="small" color="primary" disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} aria-label={naplCartActionLabel} onClick={() => void openNaplOrder([item])}>
+              {renderNaplCartCount(item.id)}
             </IconButton></span>
           </Tooltip>
         );
@@ -947,8 +1012,8 @@ export default function ResultsPanel({
       <>
         {directAssets.length > 0 && <AssetDownloadButton assets={directAssets} />}
         {isNaplExperience && !canOrderItem ? (
-            <Button size="small" variant="outlined" startIcon={renderValiseCount(item.id)} aria-label={valiseActionLabel} disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} onClick={() => void openNaplOrder([item])}>
-              {t("naplValiseAdd")}
+            <Button size="small" variant="outlined" startIcon={renderNaplCartCount(item.id)} aria-label={naplCartActionLabel} disabled={!userId || !authToken || naplSubmitting || naplOptionsLoading} onClick={() => void openNaplOrder([item])}>
+              {t("naplCartAdd")}
             </Button>
         ) : isOrderingSupported && (
           <>
@@ -1124,7 +1189,7 @@ export default function ResultsPanel({
                   size="small"
                   checked={allPageItemsSelected}
                   indeterminate={selectedPageItemCount > 0 && !allPageItemsSelected}
-                  onChange={(_, checked) => onSetPageSelection(results, checked)}
+                  onChange={(_, checked) => handlePageSelection(results, checked)}
                   slotProps={{ input: { "aria-label": t("selectAllOnPage") } }}
                   sx={{ p: 0.25, "&.Mui-checked": { color: highlightColor } }}
                 />
@@ -1296,9 +1361,9 @@ export default function ResultsPanel({
       {isNaplExperience && (
         <Box sx={{ px: 2, py: 0.5, borderBottom: 1, borderColor: "divider" }}>
           <Button startIcon={<LuggageIcon />} onClick={() => void openNaplOrder([])} disabled={naplSubmitting || naplOptionsLoading}>
-            {t("naplValise")} ({naplTargetItems.length})
+            {t("naplCart")} ({naplCartItems.length})
           </Button>
-          {naplStorageError && <Alert severity="warning">{t("naplValiseStorageError")}</Alert>}
+          {naplStorageError && <Alert severity="warning">{t("naplCartStorageError")}</Alert>}
         </Box>
       )}
       {cartItems.length > 0 && (
@@ -1312,9 +1377,9 @@ export default function ResultsPanel({
             </Tooltip>
             <ButtonGroup size="small" variant="outlined" aria-label={`${t('cart')} ${t('actions')}`}
               sx={{ '& .MuiButtonGroup-grouped': { minWidth: 34, px: 0.5, py: 0.5 } }}>
-              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : isNaplExperience && !cartItems[0]?.assets.product ? `${t("naplValiseAdd")} (${cartItems.length})` : t("downloadCartHover")}>
+              <Tooltip title={cartLoginBlocked ? t("loginToOrder") : isNaplExperience && !cartItems[0]?.assets.product ? t("naplCart") : t("downloadCartHover")}>
                 <span>
-                  <Button aria-label={isNaplExperience && !cartItems[0]?.assets.product ? `${t("naplValiseAdd")} (${cartItems.length})` : t("download")} disabled={cartBusy || cartLoginBlocked || naplSubmitting || naplOptionsLoading} onClick={handleCartDownload}>
+                  <Button aria-label={isNaplExperience && !cartItems[0]?.assets.product ? t("naplCart") : t("download")} disabled={cartBusy || cartLoginBlocked || naplSubmitting || naplOptionsLoading} onClick={handleCartDownload}>
                     {cartBusy ? <CircularProgress size={20} /> : isNaplExperience && !cartItems[0]?.assets.product ? <LuggageIcon fontSize="small" /> : <DownloadIcon fontSize="small" />}
                   </Button>
                 </span>
@@ -1343,7 +1408,7 @@ export default function ResultsPanel({
                 size="small"
                 checked={allPageItemsSelected}
                 indeterminate={selectedPageItemCount > 0 && !allPageItemsSelected}
-                onChange={(_, checked) => onSetPageSelection(results, checked)}
+                onChange={(_, checked) => handlePageSelection(results, checked)}
                 slotProps={{ input: { "aria-label": t("selectAllOnPage") } }}
               />
             )}
@@ -1588,7 +1653,7 @@ export default function ResultsPanel({
       <Dialog open={naplDialogOpen} onClose={() => !naplSubmitting && setNaplDialogOpen(false)} maxWidth="md" fullWidth
         slotProps={{ paper: { sx: { maxWidth: 640 } } }}>
         <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-          {t("naplValise")}
+          {t("naplCart")}
           <IconButton aria-label={t("close")} disabled={naplSubmitting} onClick={() => setNaplDialogOpen(false)}>
             <CloseIcon />
           </IconButton>
@@ -1599,23 +1664,23 @@ export default function ResultsPanel({
               {naplError.message}
             </Alert>
           )}
-          {naplStorageError && <Alert severity="warning">{t("naplValiseStorageError")}</Alert>}
-          {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && naplTargetItems.map(item => naplItemOptions[item.id] && (
+          {naplStorageError && <Alert severity="warning">{t("naplCartStorageError")}</Alert>}
+          {naplOptionsLoading ? <CircularProgress size={24} /> : naplOptions && naplCartItems.map(item => naplItemOptions[item.id] && (
             <Box key={item.id} component="section" aria-labelledby={`napl-entry-${item.id}`}
               sx={{ minWidth: 0, "& + section": { borderTop: 1, borderColor: "divider", pt: 3 } }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2.5 }}>
                 <Typography id={`napl-entry-${item.id}`} variant="subtitle2" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                   {item.label}
                 </Typography>
-                <Tooltip title={t("naplValiseDuplicate")}>
-                  <span><IconButton size="small" aria-label={t("naplValiseDuplicate")} disabled={naplSubmitting || naplTargetItems.length >= 100}
-                    onClick={() => setNaplTargetItems(previous => [...previous, { ...item, id: crypto.randomUUID(), options: { ...item.options } }])}>
+                <Tooltip title={t("naplCartDuplicate")}>
+                  <span><IconButton size="small" aria-label={t("naplCartDuplicate")} disabled={naplSubmitting || naplCartItems.length >= 100}
+                    onClick={() => setNaplCartItems(previous => [...previous, { ...item, id: crypto.randomUUID(), options: { ...item.options } }])}>
                     <ContentCopyIcon fontSize="small" />
                   </IconButton></span>
                 </Tooltip>
-                <Tooltip title={t("naplValiseRemove")}>
-                  <span><IconButton size="small" color="error" aria-label={t("naplValiseRemove")} disabled={naplSubmitting}
-                    onClick={() => { setNaplTargetItems(previous => previous.filter(entry => entry.id !== item.id)); setNaplError(null); }}>
+                <Tooltip title={t("naplCartRemove")}>
+                  <span><IconButton size="small" color="error" aria-label={t("naplCartRemove")} disabled={naplSubmitting}
+                    onClick={() => { setNaplCartItems(previous => previous.filter(entry => entry.id !== item.id)); setNaplError(null); }}>
                     <DeleteOutlinedIcon fontSize="small" />
                   </IconButton></span>
                 </Tooltip>
@@ -1626,7 +1691,7 @@ export default function ResultsPanel({
                   onChange={event => {
                     const quantity = Number(event.target.value);
                     if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 2147483647) {
-                      setNaplTargetItems(previous => previous.map(entry => entry.id === item.id ? { ...entry, quantity } : entry));
+                      setNaplCartItems(previous => previous.map(entry => entry.id === item.id ? { ...entry, quantity } : entry));
                     }
                   }} />
                 <TextField select size="small" fullWidth label={t("naplMediaType")} disabled={naplSubmitting}
@@ -1667,11 +1732,11 @@ export default function ResultsPanel({
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button color="error" startIcon={<DeleteOutlinedIcon />} sx={{ mr: "auto" }}
-            disabled={naplSubmitting || naplOptionsLoading || naplTargetItems.length === 0}
-            onClick={() => { setNaplTargetItems([]); setNaplError(null); }}>
-            {t("naplValiseEmpty")}
+              disabled={naplSubmitting || naplOptionsLoading || naplCartItems.length === 0}
+              onClick={() => { setNaplCartItems([]); setNaplError(null); }}>
+              {t("naplCartEmpty")}
           </Button>
-          <Button onClick={() => setNaplDialogOpen(false)} disabled={naplSubmitting}>{t("naplValiseContinue")}</Button>
+            <Button onClick={() => setNaplDialogOpen(false)} disabled={naplSubmitting}>{t("naplCartContinue")}</Button>
           <Button variant="contained" onClick={() => void handleNaplSubmit()} disabled={naplSubmitting || naplOptionsLoading || !userId || !authToken || !naplSelectionValid}>
             {naplSubmitting ? <CircularProgress size={18} /> : t("naplOrderAction")}
           </Button>

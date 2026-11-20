@@ -1,6 +1,6 @@
 import type { NaplOrderSelection } from '../services/NaplOrderService';
 
-export interface NaplBasketEntry {
+export interface NaplCartEntry {
   id: string;
   itemId: string;
   label: string;
@@ -8,14 +8,14 @@ export interface NaplBasketEntry {
   options: NaplOrderSelection;
 }
 
-const STORAGE_KEY = 'napl-order-basket-v1';
+const STORAGE_KEY = 'napl-order-cart-v1';
 
-export function loadNaplBasket(): NaplBasketEntry[] {
+export function loadNaplCart(): NaplCartEntry[] {
   try {
     const entries: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
     if (!Array.isArray(entries)) return [];
     const ids = new Set<string>();
-    return entries.filter((entry): entry is NaplBasketEntry => {
+    return entries.filter((entry): entry is NaplCartEntry => {
       if (!entry || typeof entry !== 'object'
         || typeof entry.id !== 'string' || !entry.id || ids.has(entry.id)
         || typeof entry.itemId !== 'string' || !entry.itemId || typeof entry.label !== 'string'
@@ -33,7 +33,7 @@ export function loadNaplBasket(): NaplBasketEntry[] {
   }
 }
 
-export function saveNaplBasket(entries: NaplBasketEntry[]): void {
+export function saveNaplCart(entries: NaplCartEntry[]): void {
   if (entries.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   else localStorage.removeItem(STORAGE_KEY);
 }
